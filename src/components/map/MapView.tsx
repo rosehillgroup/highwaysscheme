@@ -34,8 +34,10 @@ const FREE_STYLE: maplibregl.StyleSpecification = {
 // Use MapTiler if key is available, otherwise use free OSM tiles
 const getMapStyle = () => {
   if (MAPTILER_KEY) {
+    console.log('Using MapTiler with key:', MAPTILER_KEY.substring(0, 4) + '...');
     return `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`;
   }
+  console.log('No MapTiler key, using free OSM tiles');
   return FREE_STYLE;
 };
 
