@@ -287,8 +287,8 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({ className = '' }, ref
   }, [setIsDrawingCorridor]);
 
   return (
-    <div className={`relative w-full h-full ${className}`}>
-      <div ref={mapContainer} className="absolute inset-0" />
+    <div className={`relative w-full h-full min-h-0 ${className}`} style={{ height: '100%' }}>
+      <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
 
       {/* Loading indicator */}
       {!mapLoaded && (

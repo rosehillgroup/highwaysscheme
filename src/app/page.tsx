@@ -195,7 +195,7 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden h-full">
         {/* Left Panel - Product Library or Properties */}
         <aside className="w-80 bg-white border-r border-slate-200 flex flex-col shrink-0">
           {showProperties ? (
@@ -209,7 +209,7 @@ export default function Home() {
         </aside>
 
         {/* Map Container */}
-        <main className="flex-1 relative">
+        <main className="flex-1 relative h-full">
           <MapView ref={mapRef} />
 
           {/* Scheme Canvas (product overlay) */}
