@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo, useCallback } from 'react';
 import { useSchemeStore } from '@/stores/schemeStore';
 import productsData from '@/data/products.json';
 import type { Product, ProductCategory } from '@/types';
@@ -144,7 +144,7 @@ interface ProductCardProps {
   selected?: boolean;
 }
 
-function ProductCard({ product, onClick, disabled, selected }: ProductCardProps) {
+const ProductCard = memo(function ProductCard({ product, onClick, disabled, selected }: ProductCardProps) {
   const getCategoryColor = (category: ProductCategory): string => {
     switch (category) {
       case 'speed-cushion':
@@ -275,4 +275,4 @@ function ProductCard({ product, onClick, disabled, selected }: ProductCardProps)
       </div>
     </button>
   );
-}
+});

@@ -155,6 +155,13 @@ export interface QuantitySummary {
 // Store Types
 // ============================================================================
 
+// Snapshot of undoable state
+export interface HistorySnapshot {
+  corridor: Corridor | null;
+  elements: Record<string, PlacedElement>;
+  elementOrder: string[];
+}
+
 export interface SchemeState {
   // Metadata
   id: string;
@@ -179,6 +186,12 @@ export interface SchemeState {
   // UI State
   activePanel: 'library' | 'properties' | null;
   isDrawingCorridor: boolean;
+
+  // History (for undo/redo)
+  history: HistorySnapshot[];
+  historyIndex: number;
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 export interface SchemeActions {
@@ -212,6 +225,11 @@ export interface SchemeActions {
   // New scheme
   newScheme: () => void;
   setName: (name: string) => void;
+
+  // History
+  undo: () => void;
+  redo: () => void;
+  pushHistory: () => void;
 
   // Computed
   getQuantities: () => QuantitySummary;

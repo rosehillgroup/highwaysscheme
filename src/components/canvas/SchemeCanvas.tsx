@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import maplibregl from 'maplibre-gl';
+import * as turf from '@turf/turf';
 import { useSchemeStore } from '@/stores/schemeStore';
-import { chainageToLngLat, getBearingAtChainage } from '@/lib/corridor/chainage';
+import { chainageToLngLat, getBearingAtChainage, getCorridorSection } from '@/lib/corridor/chainage';
+import { resolveRun } from '@/lib/products/runResolver';
 import { ProductShape } from './ProductShapes';
 import productsData from '@/data/products.json';
 import type { Product, PlacedElement } from '@/types';
@@ -14,13 +16,14 @@ const productsMap = new Map(
 
 interface SchemeCanvasProps {
   map: maplibregl.Map | null;
-  placementMode: { productId: string } | null;
+  placementMode: { productId: string; isRun?: boolean } | null;
   onPlacementComplete: () => void;
 }
 
 // Scale factor: pixels per metre at current zoom
 function getPixelsPerMetre(map: maplibregl.Map, lat: number): number {
-  const metersPerPixel = (40075016.686 * Math.abs(Math.cos((lat * Math.PI) / 180))) /
+  const metersPerPixel =
+    (40075016.686 * Math.abs(Math.cos((lat * Math.PI) / 180))) /
     Math.pow(2, map.getZoom() + 8);
   return 1 / metersPerPixel;
 }
@@ -39,8 +42,8 @@ export default function SchemeCanvas({
   const selectedElementId = useSchemeStore((state) => state.selectedElementId);
   const selectElement = useSchemeStore((state) => state.selectElement);
   const addElement = useSchemeStore((state) => state.addElement);
-  const updateElement = useSchemeStore((state) => state.updateElement);
-  const removeElement = useSchemeStore((state) => state.removeElement);
+  const viewMode = useSchemeStore((state) => state.viewMode);
+  const sectionWindow = useSchemeStore((state) => state.sectionWindow);
 
   // Update view dimensions
   useEffect(() => {
@@ -79,10 +82,10 @@ export default function SchemeCanvas({
     [map]
   );
 
-  // Handle click for placement mode
+  // Handle click for discrete placement mode
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
-      if (!map || !corridor || !placementMode) return;
+      if (!map || !corridor || !placementMode || placementMode.isRun) return;
 
       const rect = svgRef.current?.getBoundingClientRect();
       if (!rect) return;
@@ -95,18 +98,13 @@ export default function SchemeCanvas({
 
       // Find nearest point on corridor and calculate chainage
       const line = corridor.geometry;
-      const turf = require('@turf/turf');
       const pt = turf.point([lngLat.lng, lngLat.lat]);
       const snapped = turf.nearestPointOnLine(turf.lineString(line.coordinates), pt);
 
       const s = (snapped.properties.location ?? 0) * 1000; // km to m
       const t = 0; // Place on centreline by default
-      const bearing = getBearingAtChainage(line, s);
 
-      // Get the corridor bearing at this point and calculate relative rotation
-      const rotation = 0; // Aligned with corridor
-
-      addElement(placementMode.productId, { s, t, rotation }, 'discrete');
+      addElement(placementMode.productId, { s, t, rotation: 0 }, 'discrete');
       onPlacementComplete();
     },
     [map, corridor, placementMode, addElement, onPlacementComplete]
@@ -121,8 +119,8 @@ export default function SchemeCanvas({
     [selectElement]
   );
 
-  // Render a placed element
-  const renderElement = useCallback(
+  // Render a discrete element
+  const renderDiscreteElement = useCallback(
     (element: PlacedElement) => {
       if (!map || !corridor) return null;
 
@@ -186,6 +184,113 @@ export default function SchemeCanvas({
     [map, corridor, pixelsPerMetre, geoToScreen, selectedElementId, handleElementClick]
   );
 
+  // Render a run element (multiple segments)
+  const renderRunElement = useCallback(
+    (element: PlacedElement) => {
+      if (!map || !corridor || !element.runConfig) return null;
+
+      const product = productsMap.get(element.productId);
+      if (!product) return null;
+
+      const resolved = resolveRun(element.runConfig, product);
+      const isSelected = element.id === selectedElementId;
+
+      return (
+        <g key={element.id} onClick={(e) => handleElementClick(e, element.id)} style={{ cursor: 'pointer' }}>
+          {resolved.segments.map((segment, index) => {
+            // Get the center point of the segment
+            const centerS = (segment.startS + segment.endS) / 2;
+            const offset = element.runConfig!.offset || 0;
+
+            const lngLat = chainageToLngLat(corridor.geometry, centerS, offset);
+            if (!lngLat) return null;
+
+            const screenPos = geoToScreen(lngLat);
+            if (!screenPos) return null;
+
+            // Find the module to get dimensions
+            const module = product.modules?.find((m) => m.id === segment.moduleId);
+            const segmentLength = module
+              ? module.dimensions.length / 1000
+              : segment.endS - segment.startS;
+            const segmentWidth = module
+              ? module.dimensions.width / 1000
+              : product.dimensions.width / 1000;
+
+            const widthPx = segmentLength * pixelsPerMetre;
+            const heightPx = segmentWidth * pixelsPerMetre;
+
+            if (widthPx < 2 || heightPx < 2) return null;
+
+            const corridorBearing = getBearingAtChainage(corridor.geometry, centerS);
+
+            return (
+              <g
+                key={`${element.id}-${index}`}
+                transform={`translate(${screenPos[0] - widthPx / 2}, ${screenPos[1] - heightPx / 2})`}
+              >
+                <ProductShape
+                  product={product}
+                  width={widthPx}
+                  height={heightPx}
+                  rotation={corridorBearing}
+                  selected={isSelected}
+                />
+              </g>
+            );
+          })}
+
+          {/* Selection highlight for entire run */}
+          {isSelected && (
+            <RunSelectionHighlight
+              element={element}
+              corridor={corridor}
+              geoToScreen={geoToScreen}
+              pixelsPerMetre={pixelsPerMetre}
+            />
+          )}
+        </g>
+      );
+    },
+    [map, corridor, pixelsPerMetre, geoToScreen, selectedElementId, handleElementClick]
+  );
+
+  // Render an element based on type
+  const renderElement = useCallback(
+    (element: PlacedElement) => {
+      if (element.type === 'run' && element.runConfig) {
+        return renderRunElement(element);
+      }
+      return renderDiscreteElement(element);
+    },
+    [renderDiscreteElement, renderRunElement]
+  );
+
+  // Filter elements based on view mode
+  const visibleElements = useMemo(() => {
+    const allElements = Object.values(elements);
+
+    if (viewMode === 'overview') {
+      return allElements;
+    }
+
+    // Section view: filter to elements within the section window
+    return allElements.filter((element) => {
+      if (element.type === 'run' && element.runConfig) {
+        // Check if run overlaps with section window
+        return (
+          element.runConfig.startS < sectionWindow.end &&
+          element.runConfig.endS > sectionWindow.start
+        );
+      }
+      // Discrete element: check if its position is within window
+      return (
+        element.position.s >= sectionWindow.start &&
+        element.position.s <= sectionWindow.end
+      );
+    });
+  }, [elements, viewMode, sectionWindow]);
+
   // Don't render if no map or corridor
   if (!map || !corridor?.carriageway.confirmed) return null;
 
@@ -195,27 +300,91 @@ export default function SchemeCanvas({
       className="absolute inset-0 pointer-events-none"
       width={viewState.width}
       height={viewState.height}
-      style={{ pointerEvents: placementMode ? 'auto' : 'none' }}
+      style={{ pointerEvents: placementMode && !placementMode.isRun ? 'auto' : 'none' }}
       onClick={handleCanvasClick}
     >
-      {/* Render all placed elements */}
-      {Object.values(elements).map(renderElement)}
+      {/* Render visible elements */}
+      {visibleElements.map(renderElement)}
 
-      {/* Placement cursor indicator */}
-      {placementMode && (
-        <g className="pointer-events-none">
-          <circle
-            cx={viewState.width / 2}
-            cy={viewState.height / 2}
-            r={20}
-            fill="none"
-            stroke="#2563eb"
-            strokeWidth={2}
-            strokeDasharray="4 2"
-            opacity={0.5}
-          />
-        </g>
+      {/* Section window indicator in section mode */}
+      {viewMode === 'section' && (
+        <text
+          x={10}
+          y={viewState.height - 10}
+          className="text-xs fill-slate-500 font-mono"
+        >
+          Section: {sectionWindow.start.toFixed(0)}m - {sectionWindow.end.toFixed(0)}m
+        </text>
       )}
     </svg>
+  );
+}
+
+// Helper component for run selection highlight
+function RunSelectionHighlight({
+  element,
+  corridor,
+  geoToScreen,
+  pixelsPerMetre,
+}: {
+  element: PlacedElement;
+  corridor: NonNullable<ReturnType<typeof useSchemeStore.getState>['corridor']>;
+  geoToScreen: (lngLat: [number, number]) => [number, number] | null;
+  pixelsPerMetre: number;
+}) {
+  if (!element.runConfig) return null;
+
+  const startLngLat = chainageToLngLat(
+    corridor.geometry,
+    element.runConfig.startS,
+    element.runConfig.offset || 0
+  );
+  const endLngLat = chainageToLngLat(
+    corridor.geometry,
+    element.runConfig.endS,
+    element.runConfig.offset || 0
+  );
+
+  if (!startLngLat || !endLngLat) return null;
+
+  const startScreen = geoToScreen(startLngLat);
+  const endScreen = geoToScreen(endLngLat);
+
+  if (!startScreen || !endScreen) return null;
+
+  return (
+    <>
+      {/* Start marker */}
+      <circle
+        cx={startScreen[0]}
+        cy={startScreen[1]}
+        r={8}
+        fill="#22c55e"
+        stroke="#ffffff"
+        strokeWidth={2}
+        style={{ pointerEvents: 'none' }}
+      />
+      {/* End marker */}
+      <circle
+        cx={endScreen[0]}
+        cy={endScreen[1]}
+        r={8}
+        fill="#ef4444"
+        stroke="#ffffff"
+        strokeWidth={2}
+        style={{ pointerEvents: 'none' }}
+      />
+      {/* Connection line */}
+      <line
+        x1={startScreen[0]}
+        y1={startScreen[1]}
+        x2={endScreen[0]}
+        y2={endScreen[1]}
+        stroke="#2563eb"
+        strokeWidth={2}
+        strokeDasharray="6 3"
+        style={{ pointerEvents: 'none' }}
+      />
+    </>
   );
 }

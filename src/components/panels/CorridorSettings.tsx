@@ -1,12 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useSchemeStore } from '@/stores/schemeStore';
 
 export default function CorridorSettings() {
   const corridor = useSchemeStore((state) => state.corridor);
   const confirmCarriagewayWidth = useSchemeStore((state) => state.confirmCarriagewayWidth);
   const toggleCycleLane = useSchemeStore((state) => state.toggleCycleLane);
+  const viewMode = useSchemeStore((state) => state.viewMode);
+  const sectionWindow = useSchemeStore((state) => state.sectionWindow);
+  const setSectionWindow = useSchemeStore((state) => state.setSectionWindow);
 
   const [width, setWidth] = useState(corridor?.carriageway.width ?? 6.5);
   const [cycleLaneWidth, setCycleLaneWidth] = useState(corridor?.cycleLane?.width ?? 2.0);
@@ -210,6 +213,91 @@ export default function CorridorSettings() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Section View Controls */}
+      {viewMode === 'section' && (
+        <div className="pt-4 border-t border-slate-200 space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium text-slate-700">Section View</label>
+            <span className="text-xs text-slate-500">
+              {sectionWindow.end - sectionWindow.start}m window
+            </span>
+          </div>
+
+          {/* Section Position Slider */}
+          <div className="space-y-2">
+            <label className="block text-xs font-medium text-slate-600">
+              Position: {sectionWindow.start.toFixed(0)}m - {sectionWindow.end.toFixed(0)}m
+            </label>
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, corridor.totalLength - (sectionWindow.end - sectionWindow.start))}
+              value={sectionWindow.start}
+              onChange={(e) => {
+                const start = parseFloat(e.target.value);
+                const windowSize = sectionWindow.end - sectionWindow.start;
+                setSectionWindow({ start, end: start + windowSize });
+              }}
+              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            />
+            <div className="flex justify-between text-xs text-slate-400">
+              <span>0m</span>
+              <span>{corridor.totalLength.toFixed(0)}m</span>
+            </div>
+          </div>
+
+          {/* Window Size */}
+          <div className="space-y-2">
+            <label className="block text-xs font-medium text-slate-600">Window Size</label>
+            <div className="flex gap-2">
+              {[50, 100, 200, 500].map((size) => (
+                <button
+                  key={size}
+                  onClick={() => {
+                    const maxStart = Math.max(0, corridor.totalLength - size);
+                    const newStart = Math.min(sectionWindow.start, maxStart);
+                    setSectionWindow({ start: newStart, end: newStart + size });
+                  }}
+                  className={`flex-1 px-2 py-1 text-xs font-medium rounded ${
+                    Math.abs(sectionWindow.end - sectionWindow.start - size) < 1
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {size}m
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Quick Navigation */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                const windowSize = sectionWindow.end - sectionWindow.start;
+                const newStart = Math.max(0, sectionWindow.start - windowSize);
+                setSectionWindow({ start: newStart, end: newStart + windowSize });
+              }}
+              disabled={sectionWindow.start <= 0}
+              className="flex-1 px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-600 rounded hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <button
+              onClick={() => {
+                const windowSize = sectionWindow.end - sectionWindow.start;
+                const newStart = Math.min(corridor.totalLength - windowSize, sectionWindow.start + windowSize);
+                setSectionWindow({ start: newStart, end: newStart + windowSize });
+              }}
+              disabled={sectionWindow.end >= corridor.totalLength}
+              className="flex-1 px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-600 rounded hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
         </div>
       )}
     </div>

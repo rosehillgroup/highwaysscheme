@@ -13,7 +13,10 @@ import type {
   SectionWindow,
   QuantitySummary,
   Corridor,
+  HistorySnapshot,
 } from '@/types';
+
+const MAX_HISTORY_SIZE = 50;
 
 const STORAGE_KEY = 'highways-scheme-planner-schemes';
 const CURRENT_SCHEME_KEY = 'highways-scheme-planner-current';
@@ -32,6 +35,19 @@ function createInitialState(): SchemeState {
     sectionWindow: { start: 0, end: 200 },
     activePanel: 'library',
     isDrawingCorridor: false,
+    history: [],
+    historyIndex: -1,
+    canUndo: false,
+    canRedo: false,
+  };
+}
+
+// Create a snapshot of the current undoable state
+function createSnapshot(state: SchemeState): HistorySnapshot {
+  return {
+    corridor: state.corridor ? JSON.parse(JSON.stringify(state.corridor)) : null,
+    elements: JSON.parse(JSON.stringify(state.elements)),
+    elementOrder: [...state.elementOrder],
   };
 }
 
@@ -45,6 +61,7 @@ export const useSchemeStore = create<SchemeStore>()(
       // ======================================================================
 
       setCorridor: (geometry: LineString) => {
+        get().pushHistory();
         const length = turf.length(turf.lineString(geometry.coordinates), { units: 'meters' });
 
         set((state) => ({
@@ -122,6 +139,7 @@ export const useSchemeStore = create<SchemeStore>()(
         position: ChainagePosition,
         type: PlacedElement['type'] = 'discrete'
       ): string => {
+        get().pushHistory();
         const id = uuidv4();
         const element: PlacedElement = {
           id,
@@ -144,6 +162,7 @@ export const useSchemeStore = create<SchemeStore>()(
       },
 
       updateElement: (id: string, changes: Partial<PlacedElement>) => {
+        get().pushHistory();
         set((state) => {
           const element = state.elements[id];
           if (!element) return state;
@@ -162,6 +181,7 @@ export const useSchemeStore = create<SchemeStore>()(
       },
 
       removeElement: (id: string) => {
+        get().pushHistory();
         set((state) => {
           const { [id]: removed, ...restElements } = state.elements;
           return {
@@ -321,6 +341,69 @@ export const useSchemeStore = create<SchemeStore>()(
 
       setName: (name: string) => {
         set({ name, updatedAt: new Date().toISOString() });
+      },
+
+      // ======================================================================
+      // History (Undo/Redo)
+      // ======================================================================
+
+      pushHistory: () => {
+        const state = get();
+        const snapshot = createSnapshot(state);
+
+        // Truncate any "future" history if we're not at the end
+        const newHistory = state.history.slice(0, state.historyIndex + 1);
+        newHistory.push(snapshot);
+
+        // Limit history size
+        if (newHistory.length > MAX_HISTORY_SIZE) {
+          newHistory.shift();
+        }
+
+        set({
+          history: newHistory,
+          historyIndex: newHistory.length - 1,
+          canUndo: newHistory.length > 1,
+          canRedo: false,
+        });
+      },
+
+      undo: () => {
+        const state = get();
+        if (state.historyIndex <= 0) return;
+
+        const newIndex = state.historyIndex - 1;
+        const snapshot = state.history[newIndex];
+
+        set({
+          corridor: snapshot.corridor,
+          elements: snapshot.elements,
+          elementOrder: snapshot.elementOrder,
+          historyIndex: newIndex,
+          canUndo: newIndex > 0,
+          canRedo: true,
+          selectedElementId: null,
+          updatedAt: new Date().toISOString(),
+        });
+      },
+
+      redo: () => {
+        const state = get();
+        if (state.historyIndex >= state.history.length - 1) return;
+
+        const newIndex = state.historyIndex + 1;
+        const snapshot = state.history[newIndex];
+
+        set({
+          corridor: snapshot.corridor,
+          elements: snapshot.elements,
+          elementOrder: snapshot.elementOrder,
+          historyIndex: newIndex,
+          canUndo: true,
+          canRedo: newIndex < state.history.length - 1,
+          selectedElementId: null,
+          updatedAt: new Date().toISOString(),
+        });
       },
 
       // ======================================================================

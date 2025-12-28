@@ -3,14 +3,21 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { useSchemeStore } from '@/stores/schemeStore';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import SearchBox from '@/components/map/SearchBox';
 import Toolbar from '@/components/panels/Toolbar';
 import ProductLibrary from '@/components/panels/ProductLibrary';
 import PropertiesPanel from '@/components/panels/PropertiesPanel';
 import TotalsPanel from '@/components/panels/TotalsPanel';
 import CorridorSettings from '@/components/panels/CorridorSettings';
+import productsData from '@/data/products.json';
 import type { MapViewHandle } from '@/components/map/MapView';
 import type { Product } from '@/types';
+
+// Create products lookup map
+const productsMap = new Map(
+  (productsData.products as Product[]).map((p) => [p.id, p])
+);
 
 // Dynamic imports for components that use browser APIs
 const MapView = dynamic(() => import('@/components/map/MapView'), {
@@ -26,10 +33,17 @@ const SchemeCanvas = dynamic(() => import('@/components/canvas/SchemeCanvas'), {
   ssr: false,
 });
 
+const RunPlacement = dynamic(() => import('@/components/canvas/RunPlacement'), {
+  ssr: false,
+});
+
 export default function Home() {
   const mapRef = useRef<MapViewHandle>(null);
   const [mapInstance, setMapInstance] = useState<any>(null);
-  const [placementMode, setPlacementMode] = useState<{ productId: string } | null>(null);
+  const [placementMode, setPlacementMode] = useState<{ productId: string; isRun?: boolean } | null>(null);
+
+  // Global keyboard shortcuts
+  useKeyboardShortcuts();
 
   const name = useSchemeStore((state) => state.name);
   const setName = useSchemeStore((state) => state.setName);
@@ -61,7 +75,9 @@ export default function Home() {
   );
 
   const handleSelectProduct = useCallback((product: Product) => {
-    setPlacementMode({ productId: product.id });
+    // Linear products use run placement mode
+    const isRun = product.type === 'linear';
+    setPlacementMode({ productId: product.id, isRun });
     // Clear any selected element when entering placement mode
     selectElement(null);
   }, [selectElement]);
@@ -155,12 +171,20 @@ export default function Home() {
 
         {/* Placement mode indicator */}
         {placementMode && (
-          <div className="flex items-center gap-2 px-3 py-1 bg-blue-100 rounded-full">
-            <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-            <span className="text-xs font-medium text-blue-700">Placement Mode</span>
+          <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
+            placementMode.isRun ? 'bg-purple-100' : 'bg-blue-100'
+          }`}>
+            <span className={`w-2 h-2 rounded-full animate-pulse ${
+              placementMode.isRun ? 'bg-purple-500' : 'bg-blue-500'
+            }`} />
+            <span className={`text-xs font-medium ${
+              placementMode.isRun ? 'text-purple-700' : 'text-blue-700'
+            }`}>
+              {placementMode.isRun ? 'Run Placement' : 'Placement Mode'}
+            </span>
             <button
               onClick={() => setPlacementMode(null)}
-              className="ml-1 text-blue-600 hover:text-blue-800"
+              className={placementMode.isRun ? 'ml-1 text-purple-600 hover:text-purple-800' : 'ml-1 text-blue-600 hover:text-blue-800'}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -209,8 +233,18 @@ export default function Home() {
             </div>
           )}
 
-          {/* Placement mode instructions */}
-          {placementMode && (
+          {/* Run Placement Tool */}
+          {placementMode?.isRun && mapInstance && (
+            <RunPlacement
+              map={mapInstance}
+              productId={placementMode.productId}
+              onComplete={handlePlacementComplete}
+              onCancel={handlePlacementComplete}
+            />
+          )}
+
+          {/* Placement mode instructions (discrete products only) */}
+          {placementMode && !placementMode.isRun && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg">
               <p className="text-sm">
                 Click on the corridor to place product • <kbd className="px-1 bg-blue-500 rounded">Esc</kbd> to cancel

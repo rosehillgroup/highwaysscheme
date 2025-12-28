@@ -7,7 +7,37 @@ import { useSchemeStore } from '@/stores/schemeStore';
 import { generateCarriagewayPolygon, generateCycleLanePolygon } from '@/lib/corridor/chainage';
 import CorridorDrawer from './CorridorDrawer';
 
-const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY || 'YOUR_MAPTILER_KEY';
+const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY || '';
+
+// Free OpenStreetMap raster tiles (no API key required)
+const FREE_STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: {
+    osm: {
+      type: 'raster',
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    },
+  },
+  layers: [
+    {
+      id: 'osm',
+      type: 'raster',
+      source: 'osm',
+      minzoom: 0,
+      maxzoom: 19,
+    },
+  ],
+};
+
+// Use MapTiler if key is available, otherwise use free OSM tiles
+const getMapStyle = () => {
+  if (MAPTILER_KEY) {
+    return `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`;
+  }
+  return FREE_STYLE;
+};
 
 export interface MapViewHandle {
   flyTo: (center: [number, number], zoom?: number) => void;
@@ -43,7 +73,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({ className = '' }, ref
 
     map.current = new maplibregl.Map({
       container: mapContainer.current,
-      style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`,
+      style: getMapStyle(),
       center: [-1.5, 52.5],
       zoom: 6,
     });

@@ -9,6 +9,27 @@ const productsMap = new Map(
   (productsData.products as Product[]).map((p) => [p.id, p])
 );
 
+// Calculate total weight including module weights
+function calculateTotalWeight(
+  product: Product,
+  moduleDetails: Record<string, number>,
+  count: number
+): number {
+  // If we have module breakdown, calculate from modules
+  if (Object.keys(moduleDetails).length > 0 && product.modules) {
+    let totalWeight = 0;
+    for (const [moduleId, moduleCount] of Object.entries(moduleDetails)) {
+      const module = product.modules.find((m) => m.id === moduleId);
+      if (module?.weight) {
+        totalWeight += module.weight * moduleCount;
+      }
+    }
+    if (totalWeight > 0) return totalWeight;
+  }
+  // Fallback to product weight * count
+  return (product.weight || 0) * count;
+}
+
 export default function TotalsPanel() {
   const elements = useSchemeStore((state) => state.elements);
   const getQuantities = useSchemeStore((state) => state.getQuantities);
@@ -87,8 +108,17 @@ export default function TotalsPanel() {
                     <div key={product.id} className="bg-white rounded p-2 border border-slate-200">
                       <div className="flex justify-between items-start">
                         <span className="text-sm font-medium text-slate-900">{product.name}</span>
-                        <span className="text-sm font-semibold text-blue-600">{count}</span>
+                        <span className="text-sm font-semibold text-blue-600">
+                          {count} {product.type === 'linear' ? (count === 1 ? 'run' : 'runs') : ''}
+                        </span>
                       </div>
+
+                      {/* Linear metres for runs */}
+                      {quantities.byProduct[product.id]?.linearMetres && (
+                        <div className="mt-1 text-xs text-purple-600 font-medium">
+                          {quantities.byProduct[product.id].linearMetres!.toFixed(1)} linear metres
+                        </div>
+                      )}
 
                       {/* Module breakdown for linear products */}
                       {Object.keys(details).length > 0 && (
@@ -110,7 +140,7 @@ export default function TotalsPanel() {
                       {/* Weight calculation */}
                       {product.weight && (
                         <div className="mt-2 text-xs text-slate-400">
-                          Total weight: {(product.weight * count).toLocaleString()} kg
+                          Total weight: {calculateTotalWeight(product, details, count).toLocaleString()} kg
                         </div>
                       )}
                     </div>
@@ -124,11 +154,52 @@ export default function TotalsPanel() {
 
       {/* Footer Summary */}
       {hasProducts && (
-        <div className="p-4 border-t border-slate-200 bg-slate-50">
+        <div className="p-4 border-t border-slate-200 bg-slate-50 space-y-2">
           <div className="flex justify-between items-center">
             <span className="text-sm font-medium text-slate-700">Total Products</span>
             <span className="text-lg font-bold text-slate-900">{quantities.totalProducts}</span>
           </div>
+
+          {/* Total linear metres */}
+          {(() => {
+            const totalLinearMetres = Object.values(quantities.byProduct)
+              .reduce((sum, p) => sum + (p.linearMetres || 0), 0);
+            if (totalLinearMetres > 0) {
+              return (
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-slate-700">Total Linear</span>
+                  <span className="text-sm font-semibold text-purple-600">
+                    {totalLinearMetres.toFixed(1)} m
+                  </span>
+                </div>
+              );
+            }
+            return null;
+          })()}
+
+          {/* Total weight */}
+          {(() => {
+            let totalWeight = 0;
+            for (const [productId, data] of Object.entries(quantities.byProduct)) {
+              const product = productsMap.get(productId);
+              if (product) {
+                totalWeight += calculateTotalWeight(product, data.modules, data.count);
+              }
+            }
+            if (totalWeight > 0) {
+              return (
+                <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                  <span className="text-sm font-medium text-slate-700">Total Weight</span>
+                  <span className="text-sm font-semibold text-slate-900">
+                    {totalWeight >= 1000
+                      ? `${(totalWeight / 1000).toFixed(2)} t`
+                      : `${totalWeight.toLocaleString()} kg`}
+                  </span>
+                </div>
+              );
+            }
+            return null;
+          })()}
         </div>
       )}
     </div>
