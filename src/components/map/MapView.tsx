@@ -35,7 +35,8 @@ const FREE_STYLE: maplibregl.StyleSpecification = {
 const getMapStyle = () => {
   if (MAPTILER_KEY) {
     console.log('Using MapTiler with key:', MAPTILER_KEY.substring(0, 4) + '...');
-    return `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`;
+    // Use OpenStreetMap style - more compatible with MapLibre
+    return `https://api.maptiler.com/maps/openstreetmap/style.json?key=${MAPTILER_KEY}`;
   }
   console.log('No MapTiler key, using free OSM tiles');
   return FREE_STYLE;
@@ -93,6 +94,15 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({ className = '' }, ref
       }),
       'top-right'
     );
+
+    // Handle missing images gracefully
+    map.current.on('styleimagemissing', (e) => {
+      const id = e.id;
+      // Create a transparent 1x1 pixel placeholder
+      if (!map.current!.hasImage(id)) {
+        map.current!.addImage(id, { width: 1, height: 1, data: new Uint8Array(4) });
+      }
+    });
 
     map.current.on('load', () => {
       setMapLoaded(true);
