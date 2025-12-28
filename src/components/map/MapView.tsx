@@ -1,25 +1,41 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useSchemeStore } from '@/stores/schemeStore';
+import { generateCarriagewayPolygon, generateCycleLanePolygon } from '@/lib/corridor/chainage';
+import CorridorDrawer from './CorridorDrawer';
 
-// MapTiler API key - replace with your own or use environment variable
 const MAPTILER_KEY = process.env.NEXT_PUBLIC_MAPTILER_KEY || 'YOUR_MAPTILER_KEY';
+
+export interface MapViewHandle {
+  flyTo: (center: [number, number], zoom?: number) => void;
+  fitBounds: (bounds: [[number, number], [number, number]], padding?: number) => void;
+}
 
 interface MapViewProps {
   className?: string;
 }
 
-export default function MapView({ className = '' }: MapViewProps) {
+const MapView = forwardRef<MapViewHandle, MapViewProps>(({ className = '' }, ref) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
 
   const corridor = useSchemeStore((state) => state.corridor);
   const isDrawingCorridor = useSchemeStore((state) => state.isDrawingCorridor);
-  const setCorridor = useSchemeStore((state) => state.setCorridor);
+  const setIsDrawingCorridor = useSchemeStore((state) => state.setIsDrawingCorridor);
+
+  // Expose map controls via ref
+  useImperativeHandle(ref, () => ({
+    flyTo: (center: [number, number], zoom: number = 14) => {
+      map.current?.flyTo({ center, zoom, duration: 1500 });
+    },
+    fitBounds: (bounds: [[number, number], [number, number]], padding: number = 100) => {
+      map.current?.fitBounds(bounds, { padding, duration: 1500 });
+    },
+  }), []);
 
   // Initialize map
   useEffect(() => {
@@ -28,31 +44,19 @@ export default function MapView({ className = '' }: MapViewProps) {
     map.current = new maplibregl.Map({
       container: mapContainer.current,
       style: `https://api.maptiler.com/maps/streets-v2/style.json?key=${MAPTILER_KEY}`,
-      center: [-1.5, 52.5], // Default to UK center
+      center: [-1.5, 52.5],
       zoom: 6,
     });
 
-    // Add attribution control
-    map.current.addControl(new maplibregl.AttributionControl(), 'bottom-right');
-
-    // Add navigation controls
+    map.current.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
     map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
-
-    // Add scale control
     map.current.addControl(
-      new maplibregl.ScaleControl({
-        maxWidth: 200,
-        unit: 'metric',
-      }),
+      new maplibregl.ScaleControl({ maxWidth: 200, unit: 'metric' }),
       'bottom-left'
     );
-
-    // Add geolocate control
     map.current.addControl(
       new maplibregl.GeolocateControl({
-        positionOptions: {
-          enableHighAccuracy: true,
-        },
+        positionOptions: { enableHighAccuracy: true },
         trackUserLocation: false,
       }),
       'top-right'
@@ -61,53 +65,88 @@ export default function MapView({ className = '' }: MapViewProps) {
     map.current.on('load', () => {
       setMapLoaded(true);
 
-      // Add corridor source (empty initially)
+      // Add corridor source
       map.current!.addSource('corridor', {
         type: 'geojson',
-        data: {
-          type: 'FeatureCollection',
-          features: [],
+        data: { type: 'FeatureCollection', features: [] },
+      });
+
+      // Carriageway fill
+      map.current!.addLayer({
+        id: 'corridor-carriageway-fill',
+        type: 'fill',
+        source: 'corridor',
+        filter: ['==', ['get', 'type'], 'carriageway'],
+        paint: {
+          'fill-color': '#475569',
+          'fill-opacity': 0.4,
         },
       });
 
-      // Corridor line layer
+      // Carriageway outline
       map.current!.addLayer({
-        id: 'corridor-line',
+        id: 'corridor-carriageway-outline',
         type: 'line',
         source: 'corridor',
+        filter: ['==', ['get', 'type'], 'carriageway'],
+        paint: {
+          'line-color': '#334155',
+          'line-width': 2,
+        },
+      });
+
+      // Cycle lane fill
+      map.current!.addLayer({
+        id: 'corridor-cyclelane-fill',
+        type: 'fill',
+        source: 'corridor',
+        filter: ['==', ['get', 'type'], 'cyclelane'],
+        paint: {
+          'fill-color': '#16a34a',
+          'fill-opacity': 0.3,
+        },
+      });
+
+      // Cycle lane outline
+      map.current!.addLayer({
+        id: 'corridor-cyclelane-outline',
+        type: 'line',
+        source: 'corridor',
+        filter: ['==', ['get', 'type'], 'cyclelane'],
+        paint: {
+          'line-color': '#15803d',
+          'line-width': 1.5,
+        },
+      });
+
+      // Centreline
+      map.current!.addLayer({
+        id: 'corridor-centreline',
+        type: 'line',
+        source: 'corridor',
+        filter: ['==', ['get', 'type'], 'centreline'],
         layout: {
           'line-join': 'round',
           'line-cap': 'round',
         },
         paint: {
           'line-color': '#2563eb',
-          'line-width': 4,
-          'line-opacity': 0.8,
+          'line-width': 3,
         },
       });
 
-      // Corridor carriageway polygon layer
+      // Start/End markers
       map.current!.addLayer({
-        id: 'corridor-carriageway',
-        type: 'fill',
+        id: 'corridor-endpoints',
+        type: 'circle',
         source: 'corridor',
+        filter: ['==', ['get', 'type'], 'endpoint'],
         paint: {
-          'fill-color': '#64748b',
-          'fill-opacity': 0.3,
+          'circle-radius': 8,
+          'circle-color': ['case', ['==', ['get', 'endpoint'], 'start'], '#22c55e', '#ef4444'],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
         },
-        filter: ['==', ['get', 'type'], 'carriageway'],
-      });
-
-      // Corridor carriageway outline
-      map.current!.addLayer({
-        id: 'corridor-carriageway-outline',
-        type: 'line',
-        source: 'corridor',
-        paint: {
-          'line-color': '#475569',
-          'line-width': 2,
-        },
-        filter: ['==', ['get', 'type'], 'carriageway'],
       });
     });
 
@@ -119,7 +158,7 @@ export default function MapView({ className = '' }: MapViewProps) {
     };
   }, []);
 
-  // Update corridor on map when it changes
+  // Update corridor visualization
   useEffect(() => {
     if (!map.current || !mapLoaded) return;
 
@@ -127,56 +166,120 @@ export default function MapView({ className = '' }: MapViewProps) {
     if (!source) return;
 
     if (corridor) {
-      source.setData({
-        type: 'FeatureCollection',
-        features: [
-          {
-            type: 'Feature',
-            properties: { type: 'centerline' },
-            geometry: corridor.geometry,
-          },
-        ],
+      const features: GeoJSON.Feature[] = [];
+
+      // Centreline
+      features.push({
+        type: 'Feature',
+        properties: { type: 'centreline' },
+        geometry: corridor.geometry,
       });
 
-      // Fit map to corridor bounds
+      // Start/End points
+      const coords = corridor.geometry.coordinates;
+      features.push({
+        type: 'Feature',
+        properties: { type: 'endpoint', endpoint: 'start' },
+        geometry: { type: 'Point', coordinates: coords[0] },
+      });
+      features.push({
+        type: 'Feature',
+        properties: { type: 'endpoint', endpoint: 'end' },
+        geometry: { type: 'Point', coordinates: coords[coords.length - 1] },
+      });
+
+      // Carriageway polygon (if width confirmed)
+      if (corridor.carriageway.confirmed) {
+        const carriageCoords = generateCarriagewayPolygon(
+          corridor.geometry,
+          corridor.carriageway.width
+        );
+        if (carriageCoords.length > 0) {
+          features.push({
+            type: 'Feature',
+            properties: { type: 'carriageway' },
+            geometry: { type: 'Polygon', coordinates: [carriageCoords] },
+          });
+        }
+      }
+
+      // Cycle lane polygon
+      if (corridor.cycleLane?.enabled && corridor.carriageway.confirmed) {
+        const cycleCoords = generateCycleLanePolygon(
+          corridor.geometry,
+          corridor.carriageway.width,
+          corridor.cycleLane.width,
+          corridor.cycleLane.side,
+          corridor.cycleLane.bufferWidth
+        );
+        if (cycleCoords.length > 0) {
+          features.push({
+            type: 'Feature',
+            properties: { type: 'cyclelane' },
+            geometry: { type: 'Polygon', coordinates: [cycleCoords] },
+          });
+        }
+      }
+
+      source.setData({ type: 'FeatureCollection', features });
+
+      // Fit to corridor bounds
       const bounds = new maplibregl.LngLatBounds();
       corridor.geometry.coordinates.forEach((coord) => {
         bounds.extend(coord as [number, number]);
       });
-      map.current.fitBounds(bounds, { padding: 100 });
+      map.current.fitBounds(bounds, { padding: 100, duration: 1000 });
     } else {
-      source.setData({
-        type: 'FeatureCollection',
-        features: [],
-      });
+      source.setData({ type: 'FeatureCollection', features: [] });
     }
   }, [corridor, mapLoaded]);
 
-  // Change cursor when drawing
+  // Update cursor when drawing
   useEffect(() => {
     if (!map.current) return;
     map.current.getCanvas().style.cursor = isDrawingCorridor ? 'crosshair' : '';
   }, [isDrawingCorridor]);
 
+  const handleDrawComplete = useCallback(() => {
+    setIsDrawingCorridor(false);
+  }, [setIsDrawingCorridor]);
+
   return (
     <div className={`relative w-full h-full ${className}`}>
       <div ref={mapContainer} className="absolute inset-0" />
 
-      {/* Map loading indicator */}
+      {/* Loading indicator */}
       {!mapLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-100">
-          <div className="text-slate-500">Loading map...</div>
+          <div className="flex items-center gap-2 text-slate-500">
+            <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            Loading map...
+          </div>
         </div>
       )}
 
-      {/* Map overlay for instructions */}
-      {mapLoaded && !corridor && (
+      {/* Instructions when no corridor */}
+      {mapLoaded && !corridor && !isDrawingCorridor && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-sm px-4 py-2 rounded-lg shadow-lg">
           <p className="text-sm text-slate-700">
-            Search for a location or click on the map to start defining your scheme corridor
+            Search for a location, then click the draw tool to define your scheme corridor
           </p>
         </div>
       )}
+
+      {/* Corridor Drawer */}
+      <CorridorDrawer
+        map={map.current}
+        isActive={isDrawingCorridor}
+        onComplete={handleDrawComplete}
+      />
     </div>
   );
-}
+});
+
+MapView.displayName = 'MapView';
+
+export default MapView;
