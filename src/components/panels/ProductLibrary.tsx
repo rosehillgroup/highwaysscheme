@@ -8,7 +8,15 @@ import type { Product, ProductCategory } from '@/types';
 const products = productsData.products as Product[];
 const categories = productsData.categories;
 
-export default function ProductLibrary() {
+interface ProductLibraryProps {
+  onSelectProduct?: (product: Product) => void;
+  selectedProductId?: string | null;
+}
+
+export default function ProductLibrary({
+  onSelectProduct,
+  selectedProductId,
+}: ProductLibraryProps) {
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -39,12 +47,9 @@ export default function ProductLibrary() {
 
   const handleProductClick = (product: Product) => {
     if (!isCarriagewayConfirmed) {
-      alert('Please define a corridor and confirm carriageway width before placing products.');
       return;
     }
-
-    // TODO: Start placement mode for this product
-    console.log('Selected product:', product);
+    onSelectProduct?.(product);
   };
 
   return (
@@ -104,6 +109,14 @@ export default function ProductLibrary() {
           </div>
         )}
 
+        {selectedProductId && (
+          <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-xs text-blue-800">
+              <strong>Placement mode active</strong> — Click on the map to place the product. Press Esc to cancel.
+            </p>
+          </div>
+        )}
+
         <div className="space-y-2">
           {filteredProducts.map((product) => (
             <ProductCard
@@ -111,14 +124,13 @@ export default function ProductLibrary() {
               product={product}
               onClick={() => handleProductClick(product)}
               disabled={!isCarriagewayConfirmed}
+              selected={product.id === selectedProductId}
             />
           ))}
         </div>
 
         {filteredProducts.length === 0 && (
-          <div className="text-center py-8 text-slate-500 text-sm">
-            No products found
-          </div>
+          <div className="text-center py-8 text-slate-500 text-sm">No products found</div>
         )}
       </div>
     </div>
@@ -129,9 +141,10 @@ interface ProductCardProps {
   product: Product;
   onClick: () => void;
   disabled: boolean;
+  selected?: boolean;
 }
 
-function ProductCard({ product, onClick, disabled }: ProductCardProps) {
+function ProductCard({ product, onClick, disabled, selected }: ProductCardProps) {
   const getCategoryColor = (category: ProductCategory): string => {
     switch (category) {
       case 'speed-cushion':
@@ -168,13 +181,25 @@ function ProductCard({ product, onClick, disabled }: ProductCardProps) {
       case 'area':
         return (
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <rect x="3" y="3" width="18" height="18" strokeWidth={2} fill="currentColor" fillOpacity={0.2} />
+            <rect
+              x="3"
+              y="3"
+              width="18"
+              height="18"
+              strokeWidth={2}
+              fill="currentColor"
+              fillOpacity={0.2}
+            />
           </svg>
         );
       case 'extendable':
         return (
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeWidth={2} d="M4 12h6m4 0h6M14 8l4 4-4 4M10 8l-4 4 4 4" />
+            <path
+              strokeLinecap="round"
+              strokeWidth={2}
+              d="M4 12h6m4 0h6M14 8l4 4-4 4M10 8l-4 4 4 4"
+            />
           </svg>
         );
     }
@@ -187,12 +212,18 @@ function ProductCard({ product, onClick, disabled }: ProductCardProps) {
       className={`w-full text-left p-3 rounded-lg border transition-all ${
         disabled
           ? 'bg-slate-50 border-slate-200 opacity-60 cursor-not-allowed'
+          : selected
+          ? 'bg-blue-50 border-blue-400 ring-2 ring-blue-400 ring-opacity-50'
           : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-sm cursor-pointer'
       }`}
     >
       <div className="flex items-start gap-3">
         {/* Icon */}
-        <div className="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500 shrink-0">
+        <div
+          className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
+            selected ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'
+          }`}
+        >
           {getTypeIcon(product.type)}
         </div>
 
@@ -200,14 +231,17 @@ function ProductCard({ product, onClick, disabled }: ProductCardProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-medium text-slate-900 truncate">{product.name}</h3>
-            <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${getCategoryColor(product.category)}`}>
+            <span
+              className={`px-1.5 py-0.5 text-[10px] font-medium rounded ${getCategoryColor(product.category)}`}
+            >
               {product.type}
             </span>
           </div>
 
           {/* Dimensions */}
           <div className="mt-1 text-xs text-slate-500">
-            {product.dimensions.length} × {product.dimensions.width} × {product.dimensions.height} mm
+            {product.dimensions.length} × {product.dimensions.width} × {product.dimensions.height}{' '}
+            mm
             {product.weight && <span className="ml-2">• {product.weight} kg</span>}
           </div>
 
@@ -225,6 +259,19 @@ function ProductCard({ product, onClick, disabled }: ProductCardProps) {
             </div>
           )}
         </div>
+
+        {/* Selection indicator */}
+        {selected && (
+          <div className="shrink-0">
+            <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+              <path
+                fillRule="evenodd"
+                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </div>
+        )}
       </div>
     </button>
   );
