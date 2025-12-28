@@ -1,0 +1,268 @@
+{
+  "version": 1,
+  "products": [
+    {
+      "id": "speed-cushion-1pc-65",
+      "name": "One-Piece Speed Cushion 65mm",
+      "type": "discrete",
+      "category": "speed-cushion",
+      "description": "Single-piece speed cushion for traffic calming",
+      "dimensions": { "length": 2000, "width": 1650, "height": 65 },
+      "weight": 170,
+      "variants": [
+        { "id": "SP1-B-0T-1650x65", "name": "Black, No Arrows", "productCode": "SP1 B 0T 1650 x 65", "dimensions": { "length": 2000, "width": 1650, "height": 65 }, "weight": 170, "color": "black", "arrows": 0 },
+        { "id": "SP1-B-1T-1650x65", "name": "Black, 1 Arrow", "productCode": "SP1 B 1T 1650 x 65", "dimensions": { "length": 2000, "width": 1650, "height": 65 }, "weight": 170, "color": "black", "arrows": 1 },
+        { "id": "SP1-B-2T-1650x65", "name": "Black, 2 Arrows", "productCode": "SP1 B 2T 1650 x 65", "dimensions": { "length": 2000, "width": 1650, "height": 65 }, "weight": 170, "color": "black", "arrows": 2 },
+        { "id": "SP1-R-0T-1650x65", "name": "Red, No Arrows", "productCode": "SP1 R 0T 1650 x 65", "dimensions": { "length": 2000, "width": 1650, "height": 65 }, "weight": 170, "color": "red", "arrows": 0 },
+        { "id": "SP1-R-1T-1650x65", "name": "Red, 1 Arrow", "productCode": "SP1 R 1T 1650 x 65", "dimensions": { "length": 2000, "width": 1650, "height": 65 }, "weight": 170, "color": "red", "arrows": 1 },
+        { "id": "SP1-R-2T-1650x65", "name": "Red, 2 Arrows", "productCode": "SP1 R 2T 1650 x 65", "dimensions": { "length": 2000, "width": 1650, "height": 65 }, "weight": 170, "color": "red", "arrows": 2 }
+      ]
+    },
+    {
+      "id": "speed-cushion-1pc-75",
+      "name": "One-Piece Speed Cushion 75mm",
+      "type": "discrete",
+      "category": "speed-cushion",
+      "description": "Single-piece speed cushion, higher profile",
+      "dimensions": { "length": 2000, "width": 1650, "height": 75 },
+      "weight": 180,
+      "variants": [
+        { "id": "SP1-B-0T-1650x75", "name": "Black, No Arrows", "productCode": "SP1 B 0T 1650 x 75", "dimensions": { "length": 2000, "width": 1650, "height": 75 }, "weight": 180, "color": "black", "arrows": 0 },
+        { "id": "SP1-R-0T-1650x75", "name": "Red, No Arrows", "productCode": "SP1 R 0T 1650 x 75", "dimensions": { "length": 2000, "width": 1650, "height": 75 }, "weight": 180, "color": "red", "arrows": 0 }
+      ]
+    },
+    {
+      "id": "speed-cushion-2pc-65",
+      "name": "Two-Piece Speed Cushion 65mm",
+      "type": "discrete",
+      "category": "speed-cushion",
+      "description": "Two-piece speed cushion for wider coverage",
+      "dimensions": { "length": 3000, "width": 1750, "height": 65 },
+      "weight": 280,
+      "variants": [
+        { "id": "SP2-B-0T-1750x65", "name": "Black, No Arrows", "productCode": "SP2 B 0T 1750 x 65", "dimensions": { "length": 3000, "width": 1750, "height": 65 }, "weight": 280, "color": "black", "arrows": 0 },
+        { "id": "SP2-R-0T-1750x65", "name": "Red, No Arrows", "productCode": "SP2 R 0T 1750 x 65", "dimensions": { "length": 3000, "width": 1750, "height": 65 }, "weight": 280, "color": "red", "arrows": 0 }
+      ]
+    },
+    {
+      "id": "speed-cushion-2pc-75-1650",
+      "name": "Two-Piece Speed Cushion 75mm (1650mm)",
+      "type": "discrete",
+      "category": "speed-cushion",
+      "description": "Two-piece speed cushion, higher profile, standard width",
+      "dimensions": { "length": 3000, "width": 1650, "height": 75 },
+      "weight": 260
+    },
+    {
+      "id": "speed-cushion-2pc-75-1900",
+      "name": "Two-Piece Speed Cushion 75mm (1900mm)",
+      "type": "discrete",
+      "category": "speed-cushion",
+      "description": "Two-piece speed cushion, higher profile, wide",
+      "dimensions": { "length": 3000, "width": 1900, "height": 75 },
+      "weight": 300
+    },
+    {
+      "id": "traffic-island-di-1000",
+      "name": "Traffic Island DI-1000",
+      "type": "discrete",
+      "category": "island",
+      "description": "One-piece traffic island 1000mm x 1000mm",
+      "dimensions": { "length": 1000, "width": 1000, "height": 130 },
+      "weight": 150
+    },
+    {
+      "id": "traffic-island-di-1200",
+      "name": "Traffic Island DI-1200",
+      "type": "discrete",
+      "category": "island",
+      "description": "One-piece traffic island 1200mm x 1200mm",
+      "dimensions": { "length": 1200, "width": 1200, "height": 130 },
+      "weight": 180
+    },
+    {
+      "id": "traffic-island-di-1200h",
+      "name": "Traffic Island DI-1200H Heritage",
+      "type": "discrete",
+      "category": "island",
+      "description": "Heritage pattern traffic island 1200mm x 1200mm",
+      "dimensions": { "length": 1200, "width": 1200, "height": 130 },
+      "weight": 180
+    },
+    {
+      "id": "traffic-island-di-2000s",
+      "name": "Traffic Island DI-2000S",
+      "type": "discrete",
+      "category": "island",
+      "description": "One-piece rectangular traffic island",
+      "dimensions": { "length": 2000, "width": 1000, "height": 130 },
+      "weight": 230
+    },
+    {
+      "id": "traffic-island-ti-2000",
+      "name": "Traffic Island TI-2000",
+      "type": "discrete",
+      "category": "island",
+      "description": "One-piece traffic island 2032mm x 1000mm",
+      "dimensions": { "length": 2032, "width": 1000, "height": 130 },
+      "weight": 280
+    },
+    {
+      "id": "traffic-island-di-1500",
+      "name": "Traffic Island DI-1500",
+      "type": "extendable",
+      "category": "island",
+      "description": "Two-piece traffic island 1500mm x 1500mm",
+      "dimensions": { "length": 1500, "width": 1500, "height": 130 },
+      "weight": 150
+    },
+    {
+      "id": "traffic-island-di-2400s",
+      "name": "Traffic Island DI-2400S",
+      "type": "extendable",
+      "category": "island",
+      "description": "Two-piece rectangular traffic island",
+      "dimensions": { "length": 2400, "width": 1270, "height": 130 },
+      "weight": 190
+    },
+    {
+      "id": "traffic-island-di-1800",
+      "name": "Traffic Island DI-1800",
+      "type": "extendable",
+      "category": "island",
+      "description": "Two-piece traffic island 1800mm x 1800mm",
+      "dimensions": { "length": 1800, "width": 1800, "height": 130 },
+      "weight": 210
+    },
+    {
+      "id": "traffic-island-di-2000",
+      "name": "Traffic Island DI-2000",
+      "type": "extendable",
+      "category": "island",
+      "description": "Two-piece traffic island 2000mm x 2000mm",
+      "dimensions": { "length": 2000, "width": 2000, "height": 130 },
+      "weight": 260
+    },
+    {
+      "id": "pedestrian-refuge-ri-1200",
+      "name": "Pedestrian Refuge RI-1200",
+      "type": "discrete",
+      "category": "refuge",
+      "description": "One-piece pedestrian refuge 1200mm x 1200mm",
+      "dimensions": { "length": 1200, "width": 1200, "height": 130 },
+      "weight": 180
+    },
+    {
+      "id": "pedestrian-refuge-ri-1200s",
+      "name": "Pedestrian Refuge RI-1200S",
+      "type": "discrete",
+      "category": "refuge",
+      "description": "One-piece rectangular pedestrian refuge",
+      "dimensions": { "length": 2000, "width": 1000, "height": 130 },
+      "weight": 230
+    },
+    {
+      "id": "pedestrian-refuge-ri-1200h",
+      "name": "Pedestrian Refuge RI-1200H Heritage",
+      "type": "discrete",
+      "category": "refuge",
+      "description": "Heritage pattern pedestrian refuge",
+      "dimensions": { "length": 1200, "width": 1200, "height": 130 },
+      "weight": 180
+    },
+    {
+      "id": "pedestrian-refuge-ri-1500",
+      "name": "Pedestrian Refuge RI-1500",
+      "type": "extendable",
+      "category": "refuge",
+      "description": "Two-piece pedestrian refuge 1500mm x 1500mm",
+      "dimensions": { "length": 1500, "width": 1500, "height": 130 },
+      "weight": 150
+    },
+    {
+      "id": "pedestrian-refuge-ri-1800",
+      "name": "Pedestrian Refuge RI-1800",
+      "type": "extendable",
+      "category": "refuge",
+      "description": "Two-piece pedestrian refuge 1800mm x 1800mm",
+      "dimensions": { "length": 1800, "width": 1800, "height": 130 },
+      "weight": 210
+    },
+    {
+      "id": "pedestrian-refuge-ri-2000",
+      "name": "Pedestrian Refuge RI-2000",
+      "type": "extendable",
+      "category": "refuge",
+      "description": "Two-piece pedestrian refuge 2000mm x 2000mm",
+      "dimensions": { "length": 2000, "width": 2000, "height": 130 },
+      "weight": 260
+    },
+    {
+      "id": "ncld-standard",
+      "name": "NCLD Standard",
+      "type": "linear",
+      "category": "ncld",
+      "description": "Narrow Cycle Lane Defender - Standard 2000mm units",
+      "dimensions": { "length": 2000, "width": 235, "height": 130 },
+      "weight": 60,
+      "layoutMode": "continuous",
+      "modules": [
+        { "id": "ncld-end", "name": "End Section", "type": "end", "dimensions": { "length": 2000, "width": 235, "height": 130 }, "weight": 60 },
+        { "id": "ncld-mid", "name": "Continuation Unit", "type": "mid", "dimensions": { "length": 2000, "width": 235, "height": 130 }, "weight": 60 },
+        { "id": "ncld-double-end", "name": "Double End", "type": "double-end", "dimensions": { "length": 2000, "width": 235, "height": 130 }, "weight": 60 }
+      ],
+      "defaultPattern": "end-mid-end"
+    },
+    {
+      "id": "ncld-lite",
+      "name": "NCLD Lite",
+      "type": "linear",
+      "category": "ncld",
+      "description": "Narrow Cycle Lane Defender Lite - 1000mm lightweight units, segmented installation only",
+      "dimensions": { "length": 1000, "width": 235, "height": 130 },
+      "weight": 24,
+      "layoutMode": "segmented",
+      "minGapLength": 2000,
+      "modules": [
+        { "id": "ncld-lite-unit", "name": "NCLD Lite Unit", "type": "end", "dimensions": { "length": 1000, "width": 235, "height": 130 }, "weight": 24 }
+      ],
+      "defaultPattern": "segmented"
+    },
+    {
+      "id": "lane-separator",
+      "name": "Lane Separator",
+      "type": "linear",
+      "category": "lane-separator",
+      "description": "Lane separator system with curved end pieces",
+      "dimensions": { "length": 1500, "width": 500, "height": 130 },
+      "weight": 100,
+      "layoutMode": "continuous",
+      "modules": [
+        { "id": "ls01-double-curve", "name": "Double Curve (LS01)", "type": "end", "dimensions": { "length": 1500, "width": 500, "height": 130 }, "weight": 95 },
+        { "id": "ls02-single-curve", "name": "Single Curve (LS02)", "type": "end", "dimensions": { "length": 1500, "width": 500, "height": 130 }, "weight": 100 },
+        { "id": "ls03-extension", "name": "Extension Unit (LS03)", "type": "mid", "dimensions": { "length": 1500, "width": 500, "height": 130 }, "weight": 105 }
+      ],
+      "defaultPattern": "double-curve-extension-single-curve"
+    },
+    {
+      "id": "raised-table",
+      "name": "Raised Table",
+      "type": "area",
+      "category": "raised-table",
+      "description": "Modular raised table / zebra crossing system",
+      "dimensions": { "length": 3000, "width": 1900, "height": 75 },
+      "weight": 300,
+      "modules": [
+        { "id": "rt-module", "name": "Raised Table Module", "type": "base", "dimensions": { "length": 1000, "width": 1000, "height": 75 }, "weight": 50 }
+      ]
+    }
+  ],
+  "categories": [
+    { "id": "speed-cushion", "name": "Speed Cushions", "description": "Traffic calming speed cushions" },
+    { "id": "island", "name": "Traffic Islands", "description": "Directional and splitter islands" },
+    { "id": "refuge", "name": "Pedestrian Refuges", "description": "Pedestrian crossing refuges" },
+    { "id": "ncld", "name": "Cycle Lane Defenders", "description": "NCLD and NCLD Lite cycle lane protection" },
+    { "id": "lane-separator", "name": "Lane Separators", "description": "Lane separation systems" },
+    { "id": "raised-table", "name": "Raised Tables", "description": "Raised tables and zebra crossings" }
+  ]
+}
