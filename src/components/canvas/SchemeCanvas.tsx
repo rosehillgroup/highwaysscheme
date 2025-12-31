@@ -139,14 +139,43 @@ export default function SchemeCanvas({
       const widthPx = (product.dimensions.length / 1000) * pixelsPerMetre;
       const heightPx = (product.dimensions.width / 1000) * pixelsPerMetre;
 
-      // Don't render if too small
-      if (widthPx < 4 || heightPx < 4) return null;
+      const isSelected = element.id === selectedElementId;
+
+      // If too small to show detail, render a marker instead
+      if (widthPx < 4 || heightPx < 4) {
+        return (
+          <g
+            key={element.id}
+            onClick={(e) => handleElementClick(e, element.id)}
+            style={{ cursor: 'pointer' }}
+          >
+            <circle
+              cx={screenPos[0]}
+              cy={screenPos[1]}
+              r={isSelected ? 10 : 6}
+              fill={isSelected ? '#2563eb' : '#475569'}
+              stroke={isSelected ? '#1d4ed8' : '#334155'}
+              strokeWidth={2}
+            />
+            {isSelected && (
+              <circle
+                cx={screenPos[0]}
+                cy={screenPos[1]}
+                r={14}
+                fill="none"
+                stroke="#2563eb"
+                strokeWidth={2}
+                strokeDasharray="4 2"
+              />
+            )}
+          </g>
+        );
+      }
 
       // Calculate rotation (corridor bearing + element rotation)
+      // Subtract 90° because SVG 0° is east (right) but bearing 0° is north (up)
       const corridorBearing = getBearingAtChainage(corridor.geometry, element.position.s);
-      const totalRotation = corridorBearing + element.position.rotation;
-
-      const isSelected = element.id === selectedElementId;
+      const totalRotation = corridorBearing - 90 + element.position.rotation;
 
       return (
         <g
@@ -209,12 +238,12 @@ export default function SchemeCanvas({
             if (!screenPos) return null;
 
             // Find the module to get dimensions
-            const module = product.modules?.find((m) => m.id === segment.moduleId);
-            const segmentLength = module
-              ? module.dimensions.length / 1000
+            const productModule = product.modules?.find((m) => m.id === segment.moduleId);
+            const segmentLength = productModule
+              ? productModule.dimensions.length / 1000
               : segment.endS - segment.startS;
-            const segmentWidth = module
-              ? module.dimensions.width / 1000
+            const segmentWidth = productModule
+              ? productModule.dimensions.width / 1000
               : product.dimensions.width / 1000;
 
             const widthPx = segmentLength * pixelsPerMetre;
@@ -222,7 +251,9 @@ export default function SchemeCanvas({
 
             if (widthPx < 2 || heightPx < 2) return null;
 
+            // Subtract 90° because SVG 0° is east (right) but bearing 0° is north (up)
             const corridorBearing = getBearingAtChainage(corridor.geometry, centerS);
+            const rotation = corridorBearing - 90;
 
             return (
               <g
@@ -233,7 +264,7 @@ export default function SchemeCanvas({
                   product={product}
                   width={widthPx}
                   height={heightPx}
-                  rotation={corridorBearing}
+                  rotation={rotation}
                   selected={isSelected}
                 />
               </g>
@@ -297,7 +328,7 @@ export default function SchemeCanvas({
   return (
     <svg
       ref={svgRef}
-      className="absolute inset-0 pointer-events-none"
+      className="absolute inset-0 z-10"
       width={viewState.width}
       height={viewState.height}
       style={{ pointerEvents: placementMode && !placementMode.isRun ? 'auto' : 'none' }}

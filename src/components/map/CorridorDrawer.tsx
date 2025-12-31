@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import * as turf from '@turf/turf';
 import { useSchemeStore } from '@/stores/schemeStore';
@@ -15,6 +15,8 @@ interface CorridorDrawerProps {
 export default function CorridorDrawer({ map, isActive, onComplete }: CorridorDrawerProps) {
   const pointsRef = useRef<Position[]>([]);
   const markersRef = useRef<maplibregl.Marker[]>([]);
+  const [pointCount, setPointCount] = useState(0);
+  const [corridorLength, setCorridorLength] = useState(0);
   const setCorridor = useSchemeStore((state) => state.setCorridor);
 
   // Clean up markers
@@ -59,6 +61,13 @@ export default function CorridorDrawer({ map, isActive, onComplete }: CorridorDr
   // Add a point to the corridor
   const addPoint = useCallback((lngLat: maplibregl.LngLat) => {
     pointsRef.current.push([lngLat.lng, lngLat.lat]);
+    setPointCount(pointsRef.current.length);
+
+    // Update corridor length
+    if (pointsRef.current.length >= 2) {
+      const length = turf.length(turf.lineString(pointsRef.current), { units: 'meters' });
+      setCorridorLength(Math.round(length));
+    }
 
     // Add marker
     const markerEl = document.createElement('div');
@@ -99,6 +108,8 @@ export default function CorridorDrawer({ map, isActive, onComplete }: CorridorDr
     // Clean up
     clearMarkers();
     pointsRef.current = [];
+    setPointCount(0);
+    setCorridorLength(0);
     updateDrawingSource();
     onComplete();
   }, [setCorridor, clearMarkers, updateDrawingSource, onComplete]);
@@ -107,6 +118,8 @@ export default function CorridorDrawer({ map, isActive, onComplete }: CorridorDr
   const cancelDrawing = useCallback(() => {
     clearMarkers();
     pointsRef.current = [];
+    setPointCount(0);
+    setCorridorLength(0);
     updateDrawingSource();
     onComplete();
   }, [clearMarkers, updateDrawingSource, onComplete]);
@@ -172,9 +185,18 @@ export default function CorridorDrawer({ map, isActive, onComplete }: CorridorDr
         // Remove last point
         if (pointsRef.current.length > 0) {
           pointsRef.current.pop();
+          setPointCount(pointsRef.current.length);
           const lastMarker = markersRef.current.pop();
           lastMarker?.remove();
           updateDrawingSource();
+
+          // Update corridor length
+          if (pointsRef.current.length >= 2) {
+            const length = turf.length(turf.lineString(pointsRef.current), { units: 'meters' });
+            setCorridorLength(Math.round(length));
+          } else {
+            setCorridorLength(0);
+          }
         }
       }
     };
@@ -192,13 +214,13 @@ export default function CorridorDrawer({ map, isActive, onComplete }: CorridorDr
   if (!isActive) return null;
 
   return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white rounded-lg shadow-lg p-4 z-10">
+    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-white rounded-lg shadow-lg p-4 z-20">
       <div className="flex items-center gap-4">
         <div className="text-sm text-slate-600">
-          <span className="font-medium">{pointsRef.current.length}</span> points
-          {pointsRef.current.length >= 2 && (
+          <span className="font-medium">{pointCount}</span> points
+          {pointCount >= 2 && (
             <span className="ml-2 text-slate-400">
-              ({(turf.length(turf.lineString(pointsRef.current.length >= 2 ? pointsRef.current : [[0,0],[0,0]]), { units: 'meters' }).toFixed(0))} m)
+              ({corridorLength} m)
             </span>
           )}
         </div>
@@ -208,8 +230,8 @@ export default function CorridorDrawer({ map, isActive, onComplete }: CorridorDr
         <div className="flex gap-2">
           <button
             onClick={completeCorridor}
-            disabled={pointsRef.current.length < 2}
-            className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={pointCount < 2}
+            className="px-3 py-1.5 text-xs font-medium bg-[#FF6B35] text-white rounded hover:bg-[#E55A2B] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Complete (Enter)
           </button>

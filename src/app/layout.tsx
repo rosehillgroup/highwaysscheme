@@ -1,10 +1,17 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { Overpass, Source_Sans_3 } from 'next/font/google';
 import './globals.css';
 
-const inter = Inter({
+const overpass = Overpass({
   subsets: ['latin'],
-  variable: '--font-inter',
+  variable: '--font-display',
+  weight: ['300', '400', '600', '700'],
+});
+
+const sourceSans = Source_Sans_3({
+  subsets: ['latin'],
+  variable: '--font-body',
+  weight: ['400', '600', '700'],
 });
 
 export const metadata: Metadata = {
@@ -20,7 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} font-sans antialiased`}>{children}</body>
+      <body className={`${overpass.variable} ${sourceSans.variable} font-sans antialiased`}>{children}</body>
     </html>
   );
 }

@@ -2,22 +2,20 @@
 
 import { useRef, useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import type maplibregl from 'maplibre-gl';
 import { useSchemeStore } from '@/stores/schemeStore';
+import { useCanvasStore } from '@/stores/canvasStore';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import SearchBox from '@/components/map/SearchBox';
 import Toolbar from '@/components/panels/Toolbar';
 import ProductLibrary from '@/components/panels/ProductLibrary';
 import PropertiesPanel from '@/components/panels/PropertiesPanel';
+import CanvasPropertiesPanel from '@/components/custom-canvas/CanvasPropertiesPanel';
+import CanvasTotalsPanel from '@/components/custom-canvas/CanvasTotalsPanel';
 import TotalsPanel from '@/components/panels/TotalsPanel';
 import CorridorSettings from '@/components/panels/CorridorSettings';
-import productsData from '@/data/products.json';
 import type { MapViewHandle } from '@/components/map/MapView';
 import type { Product } from '@/types';
-
-// Create products lookup map
-const productsMap = new Map(
-  (productsData.products as Product[]).map((p) => [p.id, p])
-);
 
 // Dynamic imports for components that use browser APIs
 const MapView = dynamic(() => import('@/components/map/MapView'), {
@@ -37,9 +35,18 @@ const RunPlacement = dynamic(() => import('@/components/canvas/RunPlacement'), {
   ssr: false,
 });
 
+const CustomCanvasView = dynamic(() => import('@/components/custom-canvas/CustomCanvasView'), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full h-full flex items-center justify-center bg-slate-100">
+      <div className="text-slate-500">Loading canvas...</div>
+    </div>
+  ),
+});
+
 export default function Home() {
   const mapRef = useRef<MapViewHandle>(null);
-  const [mapInstance, setMapInstance] = useState<any>(null);
+  const [mapInstance, setMapInstance] = useState<maplibregl.Map | null>(null);
   const [placementMode, setPlacementMode] = useState<{ productId: string; isRun?: boolean } | null>(null);
 
   // Global keyboard shortcuts
@@ -50,10 +57,27 @@ export default function Home() {
   const corridor = useSchemeStore((state) => state.corridor);
   const selectedElementId = useSchemeStore((state) => state.selectedElementId);
   const selectElement = useSchemeStore((state) => state.selectElement);
+  const schemeMode = useSchemeStore((state) => state.schemeMode);
+  const setSchemeMode = useSchemeStore((state) => state.setSchemeMode);
   const isCarriagewayConfirmed = corridor?.carriageway.confirmed ?? false;
 
+  // Canvas store state
+  const canvasSelection = useCanvasStore((state) => state.selection);
+
+  // Check if we're in canvas mode
+  const isCanvasMode = schemeMode === 'canvas';
+
+  // Determine if canvas has any selection
+  const hasCanvasSelection =
+    canvasSelection.selectedRoadIds.length > 0 ||
+    canvasSelection.selectedJunctionIds.length > 0 ||
+    canvasSelection.selectedMarkingIds.length > 0 ||
+    canvasSelection.selectedSignageIds.length > 0 ||
+    canvasSelection.selectedFurnitureIds.length > 0 ||
+    canvasSelection.selectedProductIds.length > 0;
+
   // Determine which panel to show
-  const showProperties = selectedElementId !== null;
+  const showProperties = isCanvasMode ? hasCanvasSelection : selectedElementId !== null;
 
   const handleSearchSelect = useCallback(
     (result: {
@@ -98,19 +122,9 @@ export default function Home() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [placementMode]);
 
-  // Get map instance from MapView
-  useEffect(() => {
-    // We need to get the map instance for the SchemeCanvas
-    // This is a bit hacky but works for now
-    const checkMap = setInterval(() => {
-      const mapContainer = document.querySelector('.maplibregl-map');
-      if (mapContainer && (mapContainer as any).__maplibre) {
-        setMapInstance((mapContainer as any).__maplibre);
-        clearInterval(checkMap);
-      }
-    }, 100);
-
-    return () => clearInterval(checkMap);
+  // Handle map ready callback
+  const handleMapReady = useCallback((map: maplibregl.Map) => {
+    setMapInstance(map);
   }, []);
 
   return (
@@ -118,7 +132,7 @@ export default function Home() {
       {/* Header */}
       <header className="h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-4 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+          <div className="w-8 h-8 bg-[#FF6B35] rounded-lg flex items-center justify-center">
             <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 strokeLinecap="round"
@@ -131,10 +145,45 @@ export default function Home() {
           <h1 className="text-lg font-semibold text-slate-900">Highways Scheme Planner</h1>
         </div>
 
-        {/* Search Box */}
-        <div className="flex-1 max-w-md">
-          <SearchBox onSelect={handleSearchSelect} />
+        {/* Mode Selector */}
+        <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
+          <button
+            onClick={() => setSchemeMode('map')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              !isCanvasMode
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+            </svg>
+            Map
+          </button>
+          <button
+            onClick={() => setSchemeMode('canvas')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              isCanvasMode
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+            </svg>
+            Canvas
+          </button>
         </div>
+
+        {/* Search Box - only show in map mode */}
+        {!isCanvasMode && (
+          <div className="flex-1 max-w-md">
+            <SearchBox onSelect={handleSearchSelect} />
+          </div>
+        )}
+
+        {/* Spacer for canvas mode */}
+        {isCanvasMode && <div className="flex-1" />}
 
         {/* Scheme Name */}
         <div className="flex items-center gap-2">
@@ -142,10 +191,10 @@ export default function Home() {
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="px-2 py-1 text-sm font-medium text-slate-900 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-none"
+            className="px-2 py-1 text-sm font-medium text-slate-900 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-[#FF6B35] focus:outline-none"
             placeholder="Untitled Scheme"
           />
-          {corridor && (
+          {!isCanvasMode && corridor && (
             <span className="text-sm text-slate-400">
               •{' '}
               {corridor.totalLength >= 1000
@@ -155,8 +204,8 @@ export default function Home() {
           )}
         </div>
 
-        {/* Status indicator */}
-        {corridor && (
+        {/* Status indicator - map mode only */}
+        {!isCanvasMode && corridor && (
           <div className="flex items-center gap-2">
             <span
               className={`w-2 h-2 rounded-full ${
@@ -169,22 +218,30 @@ export default function Home() {
           </div>
         )}
 
-        {/* Placement mode indicator */}
-        {placementMode && (
+        {/* Canvas mode indicator */}
+        {isCanvasMode && (
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#FF6B35]" />
+            <span className="text-xs text-slate-500">Custom Layout Mode</span>
+          </div>
+        )}
+
+        {/* Placement mode indicator - map mode only */}
+        {!isCanvasMode && placementMode && (
           <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
-            placementMode.isRun ? 'bg-purple-100' : 'bg-blue-100'
+            placementMode.isRun ? 'bg-purple-100' : 'bg-[#FFF0EB]'
           }`}>
             <span className={`w-2 h-2 rounded-full animate-pulse ${
-              placementMode.isRun ? 'bg-purple-500' : 'bg-blue-500'
+              placementMode.isRun ? 'bg-purple-500' : 'bg-[#FF6B35]'
             }`} />
             <span className={`text-xs font-medium ${
-              placementMode.isRun ? 'text-purple-700' : 'text-blue-700'
+              placementMode.isRun ? 'text-purple-700' : 'text-[#E55A2B]'
             }`}>
               {placementMode.isRun ? 'Run Placement' : 'Placement Mode'}
             </span>
             <button
               onClick={() => setPlacementMode(null)}
-              className={placementMode.isRun ? 'ml-1 text-purple-600 hover:text-purple-800' : 'ml-1 text-blue-600 hover:text-blue-800'}
+              className={placementMode.isRun ? 'ml-1 text-purple-600 hover:text-purple-800' : 'ml-1 text-[#FF6B35] hover:text-[#E55A2B]'}
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -199,7 +256,11 @@ export default function Home() {
         {/* Left Panel - Product Library or Properties */}
         <aside className="w-80 bg-white border-r border-slate-200 flex flex-col shrink-0">
           {showProperties ? (
-            <PropertiesPanel />
+            isCanvasMode ? (
+              <CanvasPropertiesPanel />
+            ) : (
+              <PropertiesPanel />
+            )
           ) : (
             <ProductLibrary
               onSelectProduct={handleSelectProduct}
@@ -208,54 +269,62 @@ export default function Home() {
           )}
         </aside>
 
-        {/* Map Container */}
+        {/* Main Content Area */}
         <main className="flex-1 relative h-full">
-          <MapView ref={mapRef} />
+          {isCanvasMode ? (
+            /* Custom Canvas Mode */
+            <CustomCanvasView />
+          ) : (
+            /* Map Mode */
+            <>
+              <MapView ref={mapRef} onMapReady={handleMapReady} />
 
-          {/* Scheme Canvas (product overlay) */}
-          {isCarriagewayConfirmed && mapInstance && (
-            <SchemeCanvas
-              map={mapInstance}
-              placementMode={placementMode}
-              onPlacementComplete={handlePlacementComplete}
-            />
-          )}
+              {/* Scheme Canvas (product overlay) */}
+              {isCarriagewayConfirmed && mapInstance && (
+                <SchemeCanvas
+                  map={mapInstance}
+                  placementMode={placementMode}
+                  onPlacementComplete={handlePlacementComplete}
+                />
+              )}
 
-          {/* Floating Toolbar */}
-          <div className="absolute top-4 right-4 z-10">
-            <Toolbar />
-          </div>
+              {/* Floating Toolbar - positioned below map zoom controls */}
+              <div className="absolute top-32 right-4 z-10">
+                <Toolbar />
+              </div>
 
-          {/* Corridor Settings */}
-          {corridor && (
-            <div className="absolute bottom-4 left-4 z-10 w-80">
-              <CorridorSettings />
-            </div>
-          )}
+              {/* Corridor Settings */}
+              {corridor && (
+                <div className="absolute bottom-4 left-4 z-10 w-80">
+                  <CorridorSettings />
+                </div>
+              )}
 
-          {/* Run Placement Tool */}
-          {placementMode?.isRun && mapInstance && (
-            <RunPlacement
-              map={mapInstance}
-              productId={placementMode.productId}
-              onComplete={handlePlacementComplete}
-              onCancel={handlePlacementComplete}
-            />
-          )}
+              {/* Run Placement Tool */}
+              {placementMode?.isRun && mapInstance && (
+                <RunPlacement
+                  map={mapInstance}
+                  productId={placementMode.productId}
+                  onComplete={handlePlacementComplete}
+                  onCancel={handlePlacementComplete}
+                />
+              )}
 
-          {/* Placement mode instructions (discrete products only) */}
-          {placementMode && !placementMode.isRun && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg">
-              <p className="text-sm">
-                Click on the corridor to place product • <kbd className="px-1 bg-blue-500 rounded">Esc</kbd> to cancel
-              </p>
-            </div>
+              {/* Placement mode instructions (discrete products only) */}
+              {placementMode && !placementMode.isRun && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-[#FF6B35] text-white px-4 py-2 rounded-lg shadow-lg">
+                  <p className="text-sm">
+                    Click on the corridor to place product • <kbd className="px-1 bg-[#E55A2B] rounded">Esc</kbd> to cancel
+                  </p>
+                </div>
+              )}
+            </>
           )}
         </main>
 
         {/* Right Panel - Totals */}
         <aside className="w-72 bg-white border-l border-slate-200 flex flex-col shrink-0">
-          <TotalsPanel />
+          {isCanvasMode ? <CanvasTotalsPanel /> : <TotalsPanel />}
         </aside>
       </div>
     </div>

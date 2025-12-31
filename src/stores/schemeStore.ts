@@ -10,6 +10,7 @@ import type {
   ChainagePosition,
   CycleLaneConfig,
   ViewMode,
+  SchemeMode,
   SectionWindow,
   QuantitySummary,
   Corridor,
@@ -27,6 +28,7 @@ function createInitialState(): SchemeState {
     name: 'Untitled Scheme',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    schemeMode: 'map',
     corridor: null,
     elements: {},
     elementOrder: [],
@@ -55,6 +57,19 @@ export const useSchemeStore = create<SchemeStore>()(
   devtools(
     (set, get) => ({
       ...createInitialState(),
+
+      // ======================================================================
+      // Mode Actions
+      // ======================================================================
+
+      setSchemeMode: (mode: SchemeMode) => {
+        set({
+          schemeMode: mode,
+          // Reset drawing state when switching modes
+          isDrawingCorridor: false,
+          selectedElementId: null,
+        });
+      },
 
       // ======================================================================
       // Corridor Actions

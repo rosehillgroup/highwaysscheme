@@ -113,7 +113,7 @@ export default function SearchBox({ onSelect, className = '' }: SearchBoxProps) 
           onKeyDown={handleKeyDown}
           onFocus={() => results.length > 0 && setIsOpen(true)}
           placeholder="Search for a place or postcode..."
-          className="w-full px-4 py-2 pr-10 bg-white border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-slate-900 placeholder:text-slate-400"
+          className="w-full px-4 py-2 pr-10 bg-white border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#FF6B35] focus:border-transparent text-slate-900 placeholder:text-slate-400"
         />
         <div className="absolute right-3 top-1/2 -translate-y-1/2">
           {isLoading ? (

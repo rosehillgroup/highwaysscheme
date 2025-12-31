@@ -2,9 +2,9 @@
 
 import { useMemo } from 'react';
 import { useSchemeStore } from '@/stores/schemeStore';
-import { resolveRun, runToQuantities } from '@/lib/products/runResolver';
+import { resolveRun, runToQuantities, calculateAutoFillValues } from '@/lib/products/runResolver';
 import productsData from '@/data/products.json';
-import type { Product, PlacedElement } from '@/types';
+import type { Product, PlacedElement, RunConfig } from '@/types';
 
 const productsMap = new Map(
   (productsData.products as Product[]).map((p) => [p.id, p])
@@ -29,6 +29,17 @@ export default function PropertiesPanel() {
     return resolveRun(selectedElement.runConfig, product);
   }, [isRun, product, selectedElement?.runConfig]);
 
+  // Calculate auto-fill values for display
+  const autoFillValues = useMemo(() => {
+    if (!isRun || !product || !selectedElement?.runConfig) return null;
+    return calculateAutoFillValues(selectedElement.runConfig, product);
+  }, [isRun, product, selectedElement?.runConfig]);
+
+  // Check if product has mid modules
+  const hasMidModule = product?.modules?.some(
+    (m) => m.type === 'mid' || m.type === 'extension'
+  ) ?? false;
+
   const handlePositionChange = (field: 's' | 't' | 'rotation', value: number) => {
     if (!selectedElementId || !selectedElement) return;
 
@@ -42,7 +53,7 @@ export default function PropertiesPanel() {
 
   const handleRunConfigChange = (
     field: keyof NonNullable<PlacedElement['runConfig']>,
-    value: number | string
+    value: number | string | boolean
   ) => {
     if (!selectedElementId || !selectedElement?.runConfig || !product) return;
 
@@ -170,7 +181,7 @@ export default function PropertiesPanel() {
                   min={0}
                   max={selectedElement.runConfig.endS - 1}
                   step={0.5}
-                  className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-[#FF6B35]"
                 />
               </div>
               <div>
@@ -182,7 +193,7 @@ export default function PropertiesPanel() {
                   min={selectedElement.runConfig.startS + 1}
                   max={corridor?.totalLength}
                   step={0.5}
-                  className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-[#FF6B35]"
                 />
               </div>
             </div>
@@ -203,7 +214,7 @@ export default function PropertiesPanel() {
                 value={selectedElement.runConfig.offset.toFixed(2)}
                 onChange={(e) => handleRunConfigChange('offset', parseFloat(e.target.value) || 0)}
                 step={0.1}
-                className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-[#FF6B35]"
               />
               <div className="flex gap-1 mt-1">
                 {corridor?.carriageway && (
@@ -231,22 +242,214 @@ export default function PropertiesPanel() {
               </div>
             </div>
 
-            {/* Layout Mode (for segmented products) */}
-            {product.layoutMode === 'segmented' && (
-              <div>
-                <label className="block text-xs text-slate-600 mb-1">Gap Length (m)</label>
-                <input
-                  type="number"
-                  value={selectedElement.runConfig.gapLength?.toFixed(1) || '2.0'}
-                  onChange={(e) => handleRunConfigChange('gapLength', parseFloat(e.target.value) || 2)}
-                  min={0.5}
-                  max={10}
-                  step={0.5}
-                  className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+            {/* Layout Mode Selector */}
+            {hasMidModule && (
+              <div className="pt-3 border-t border-slate-200">
+                <label className="block text-xs font-medium text-slate-700 mb-2">Layout Mode</label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleRunConfigChange('layoutMode', 'continuous')}
+                    className={`flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
+                      selectedElement.runConfig.layoutMode === 'continuous'
+                        ? 'bg-[#FF6B35] text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    Continuous
+                  </button>
+                  <button
+                    onClick={() => handleRunConfigChange('layoutMode', 'segmented')}
+                    className={`flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-colors ${
+                      selectedElement.runConfig.layoutMode === 'segmented'
+                        ? 'bg-[#FF6B35] text-white'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    Segmented
+                  </button>
+                </div>
                 <p className="text-xs text-slate-400 mt-1">
-                  Distance between each unit
+                  {selectedElement.runConfig.layoutMode === 'continuous'
+                    ? 'End + Mid pieces + End (no gaps)'
+                    : 'Individual units with gaps between'}
                 </p>
+              </div>
+            )}
+
+            {/* Continuous Mode Options */}
+            {selectedElement.runConfig.layoutMode === 'continuous' && hasMidModule && (
+              <div className="space-y-3">
+                {/* Auto-fill toggle */}
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-slate-700">Auto-fill</label>
+                  <button
+                    onClick={() => handleRunConfigChange('autoFill', selectedElement.runConfig?.autoFill === false ? true : false)}
+                    className={`relative w-10 h-5 rounded-full transition-colors ${
+                      selectedElement.runConfig.autoFill !== false ? 'bg-[#FF6B35]' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                        selectedElement.runConfig.autoFill !== false ? 'translate-x-5' : ''
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Custom mid count (when auto-fill is off) */}
+                {selectedElement.runConfig.autoFill === false && (
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Number of Mid Pieces
+                      {autoFillValues && (
+                        <span className="text-slate-400 ml-1">
+                          (auto: {autoFillValues.midCount})
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      type="number"
+                      value={selectedElement.runConfig.customMidCount ?? autoFillValues?.midCount ?? 0}
+                      onChange={(e) => handleRunConfigChange('customMidCount', parseInt(e.target.value) || 0)}
+                      min={0}
+                      max={100}
+                      step={1}
+                      className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-[#FF6B35]"
+                    />
+                    <p className="text-xs text-slate-400 mt-1">
+                      Configure specific number of mid pieces
+                    </p>
+                  </div>
+                )}
+
+                {/* Quick presets */}
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">Quick Presets</label>
+                  <div className="flex gap-1 flex-wrap">
+                    {[0, 1, 2, 3, 5, 10].map((count) => (
+                      <button
+                        key={count}
+                        onClick={() => {
+                          handleRunConfigChange('autoFill', false);
+                          handleRunConfigChange('customMidCount', count);
+                        }}
+                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                          selectedElement.runConfig?.autoFill === false &&
+                          selectedElement.runConfig?.customMidCount === count
+                            ? 'bg-[#FF6B35] text-white'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {count === 0 ? '2 ends only' : `2 end + ${count} mid`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Segmented Mode Options */}
+            {selectedElement.runConfig.layoutMode === 'segmented' && (
+              <div className="space-y-3">
+                {/* Units per Section */}
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">Units per Section</label>
+                  <p className="text-xs text-slate-400 mb-2">
+                    How many units are joined together in each section
+                  </p>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4].map((count) => (
+                      <button
+                        key={count}
+                        onClick={() => handleRunConfigChange('unitsPerSection', count)}
+                        className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
+                          (selectedElement.runConfig?.unitsPerSection ?? 1) === count
+                            ? 'bg-[#FF6B35] text-white'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {count === 1 ? '1 unit' : `${count} units`}
+                      </button>
+                    ))}
+                  </div>
+                  {(selectedElement.runConfig.unitsPerSection ?? 1) > 1 && (
+                    <p className="text-xs text-green-600 mt-1">
+                      Each section = {((selectedElement.runConfig.unitsPerSection ?? 1) * (product.dimensions.length / 1000)).toFixed(1)}m
+                    </p>
+                  )}
+                </div>
+
+                {/* Gap Length */}
+                <div>
+                  <label className="block text-xs text-slate-600 mb-1">Gap Length (m)</label>
+                  <input
+                    type="number"
+                    value={selectedElement.runConfig.gapLength?.toFixed(1) || '2.0'}
+                    onChange={(e) => handleRunConfigChange('gapLength', parseFloat(e.target.value) || 2)}
+                    min={0.5}
+                    max={10}
+                    step={0.5}
+                    className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-[#FF6B35]"
+                  />
+                  <div className="flex gap-1 mt-1">
+                    {[1, 2, 3, 5].map((gap) => (
+                      <button
+                        key={gap}
+                        onClick={() => handleRunConfigChange('gapLength', gap)}
+                        className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
+                          Math.abs((selectedElement.runConfig?.gapLength ?? 2) - gap) < 0.1
+                            ? 'bg-[#FF6B35] text-white'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
+                      >
+                        {gap}m
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Auto-fill toggle */}
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-slate-700">Auto-fill sections</label>
+                  <button
+                    onClick={() => handleRunConfigChange('autoFill', selectedElement.runConfig?.autoFill === false ? true : false)}
+                    className={`relative w-10 h-5 rounded-full transition-colors ${
+                      selectedElement.runConfig.autoFill !== false ? 'bg-[#FF6B35]' : 'bg-slate-300'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                        selectedElement.runConfig.autoFill !== false ? 'translate-x-5' : ''
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {/* Custom section count (when auto-fill is off) */}
+                {selectedElement.runConfig.autoFill === false && (
+                  <div>
+                    <label className="block text-xs text-slate-600 mb-1">
+                      Number of Sections
+                      {autoFillValues && (
+                        <span className="text-slate-400 ml-1">
+                          (auto: {autoFillValues.sectionCount})
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      type="number"
+                      value={selectedElement.runConfig.customUnitCount ?? autoFillValues?.sectionCount ?? 1}
+                      onChange={(e) => handleRunConfigChange('customUnitCount', parseInt(e.target.value) || 1)}
+                      min={1}
+                      max={100}
+                      step={1}
+                      className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-[#FF6B35]"
+                    />
+                    <p className="text-xs text-slate-400 mt-1">
+                      Total units: {(selectedElement.runConfig.customUnitCount ?? autoFillValues?.sectionCount ?? 1) * (selectedElement.runConfig.unitsPerSection ?? 1)}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -300,7 +503,7 @@ export default function PropertiesPanel() {
                 min={0}
                 max={corridor?.totalLength ?? 1000}
                 step={0.5}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF6B35]"
               />
             </div>
 
@@ -315,7 +518,7 @@ export default function PropertiesPanel() {
                 value={selectedElement.position.t.toFixed(2)}
                 onChange={(e) => handlePositionChange('t', parseFloat(e.target.value) || 0)}
                 step={0.1}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF6B35]"
               />
               <div className="flex gap-1 mt-1">
                 {corridor?.carriageway && (
@@ -354,7 +557,7 @@ export default function PropertiesPanel() {
                 value={selectedElement.position.rotation.toFixed(0)}
                 onChange={(e) => handlePositionChange('rotation', parseFloat(e.target.value) || 0)}
                 step={5}
-                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF6B35]"
               />
               <div className="flex gap-1 mt-1">
                 {[0, 90, 180, 270].map((angle) => (

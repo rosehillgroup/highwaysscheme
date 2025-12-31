@@ -3,19 +3,37 @@
 
 :root {
   --background: #f8fafc;
-  --foreground: #0f172a;
+  --foreground: #1A365D;
+
+  /* Rosehill Brand Colors */
+  --rh-orange: #FF6B35;
+  --rh-orange-dark: #E55A2B;
+  --rh-orange-light: #FF8F5C;
+  --rh-blue: #1A365D;
+  --rh-blue-mid: #2D4A71;
+  --rh-blue-deep: #0F1F33;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter);
+  --color-rh-orange: var(--rh-orange);
+  --color-rh-orange-dark: var(--rh-orange-dark);
+  --color-rh-orange-light: var(--rh-orange-light);
+  --color-rh-blue: var(--rh-blue);
+  --color-rh-blue-mid: var(--rh-blue-mid);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+  font-family: var(--font-body), system-ui, -apple-system, sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display), system-ui, -apple-system, sans-serif;
 }
 
 /* MapLibre overrides */

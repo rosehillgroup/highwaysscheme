@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { useSchemeStore } from '@/stores/schemeStore';
 
 export default function CorridorSettings() {
@@ -8,6 +8,7 @@ export default function CorridorSettings() {
   const confirmCarriagewayWidth = useSchemeStore((state) => state.confirmCarriagewayWidth);
   const toggleCycleLane = useSchemeStore((state) => state.toggleCycleLane);
   const viewMode = useSchemeStore((state) => state.viewMode);
+  const setViewMode = useSchemeStore((state) => state.setViewMode);
   const sectionWindow = useSchemeStore((state) => state.sectionWindow);
   const setSectionWindow = useSchemeStore((state) => state.setSectionWindow);
 
@@ -54,9 +55,35 @@ export default function CorridorSettings() {
 
   return (
     <div className="bg-white rounded-lg shadow-lg p-4 space-y-4">
-      <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">
-        Corridor Settings
-      </h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-slate-900 uppercase tracking-wide">
+          Corridor Settings
+        </h3>
+
+        {/* View Mode Toggle */}
+        <div className="flex gap-1 bg-slate-100 p-0.5 rounded-lg">
+          <button
+            onClick={() => setViewMode('overview')}
+            className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+              viewMode === 'overview'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Overview
+          </button>
+          <button
+            onClick={() => setViewMode('section')}
+            className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+              viewMode === 'section'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Section
+          </button>
+        </div>
+      </div>
 
       {/* Corridor Length */}
       <div className="flex justify-between text-sm">
@@ -78,12 +105,12 @@ export default function CorridorSettings() {
             max={20}
             step={0.5}
             disabled={isConfirmed}
-            className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
+            className="flex-1 px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF6B35] disabled:bg-slate-100 disabled:text-slate-500"
           />
           {!isConfirmed ? (
             <button
               onClick={handleConfirmWidth}
-              className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              className="px-4 py-2 text-sm font-medium bg-[#FF6B35] text-white rounded-lg hover:bg-[#E55A2B]"
             >
               Confirm
             </button>
@@ -241,7 +268,7 @@ export default function CorridorSettings() {
                 const windowSize = sectionWindow.end - sectionWindow.start;
                 setSectionWindow({ start, end: start + windowSize });
               }}
-              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+              className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#FF6B35]"
             />
             <div className="flex justify-between text-xs text-slate-400">
               <span>0m</span>
@@ -263,7 +290,7 @@ export default function CorridorSettings() {
                   }}
                   className={`flex-1 px-2 py-1 text-xs font-medium rounded ${
                     Math.abs(sectionWindow.end - sectionWindow.start - size) < 1
-                      ? 'bg-blue-600 text-white'
+                      ? 'bg-[#FF6B35] text-white'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                   }`}
                 >

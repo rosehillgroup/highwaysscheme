@@ -7,11 +7,8 @@ export default function Toolbar() {
   const [showSavedSchemes, setShowSavedSchemes] = useState(false);
   const [savedSchemes, setSavedSchemes] = useState<Array<{ id: string; name: string; updatedAt: string }>>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const viewMode = useSchemeStore((state) => state.viewMode);
-  const setViewMode = useSchemeStore((state) => state.setViewMode);
   const isDrawingCorridor = useSchemeStore((state) => state.isDrawingCorridor);
   const setIsDrawingCorridor = useSchemeStore((state) => state.setIsDrawingCorridor);
-  const corridor = useSchemeStore((state) => state.corridor);
   const saveToBrowser = useSchemeStore((state) => state.saveToBrowser);
   const loadFromBrowser = useSchemeStore((state) => state.loadFromBrowser);
   const exportJSON = useSchemeStore((state) => state.exportJSON);
@@ -85,35 +82,9 @@ export default function Toolbar() {
   };
 
   return (
-    <div className="flex flex-col gap-2">
-      {/* View Mode Toggle */}
-      {corridor && (
-        <div className="bg-white rounded-lg shadow-lg p-1 flex gap-1">
-          <button
-            onClick={() => setViewMode('overview')}
-            className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-              viewMode === 'overview'
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            Overview
-          </button>
-          <button
-            onClick={() => setViewMode('section')}
-            className={`px-3 py-1.5 text-xs font-medium rounded transition-colors ${
-              viewMode === 'section'
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            Section
-          </button>
-        </div>
-      )}
-
+    <div className="flex flex-col gap-2 items-end">
       {/* Undo/Redo */}
-      <div className="bg-white rounded-lg shadow-lg p-1 flex flex-col gap-1">
+      <div className="bg-white rounded-lg shadow-lg p-1 flex flex-col gap-1 w-fit">
         <button
           onClick={undo}
           disabled={!canUndo}
@@ -145,12 +116,12 @@ export default function Toolbar() {
       </div>
 
       {/* Drawing Tools */}
-      <div className="bg-white rounded-lg shadow-lg p-1 flex flex-col gap-1">
+      <div className="bg-white rounded-lg shadow-lg p-1 flex flex-col gap-1 w-fit">
         <button
           onClick={() => setIsDrawingCorridor(!isDrawingCorridor)}
           className={`p-2 rounded transition-colors ${
             isDrawingCorridor
-              ? 'bg-blue-600 text-white'
+              ? 'bg-[#FF6B35] text-white'
               : 'text-slate-600 hover:bg-slate-100'
           }`}
           title={isDrawingCorridor ? 'Cancel drawing' : 'Draw corridor'}
@@ -162,7 +133,7 @@ export default function Toolbar() {
       </div>
 
       {/* File Operations */}
-      <div className="bg-white rounded-lg shadow-lg p-1 flex flex-col gap-1 relative" ref={dropdownRef}>
+      <div className="bg-white rounded-lg shadow-lg p-1 flex flex-col gap-1 w-fit relative" ref={dropdownRef}>
         <button
           onClick={newScheme}
           className="p-2 text-slate-600 hover:bg-slate-100 rounded transition-colors"
@@ -186,7 +157,7 @@ export default function Toolbar() {
         <button
           onClick={() => setShowSavedSchemes(!showSavedSchemes)}
           className={`p-2 rounded transition-colors ${
-            showSavedSchemes ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+            showSavedSchemes ? 'bg-[#FF6B35] text-white' : 'text-slate-600 hover:bg-slate-100'
           }`}
           title="Load saved scheme"
         >
@@ -214,7 +185,7 @@ export default function Toolbar() {
                     key={scheme.id}
                     onClick={() => handleLoadScheme(scheme.id)}
                     className={`px-3 py-2 cursor-pointer hover:bg-slate-50 flex items-center justify-between ${
-                      scheme.id === currentSchemeId ? 'bg-blue-50' : ''
+                      scheme.id === currentSchemeId ? 'bg-[#FFF0EB]' : ''
                     }`}
                   >
                     <div className="flex-1 min-w-0">

@@ -2,6 +2,9 @@
 
 import type { LineString, Position } from 'geojson';
 
+// Re-export canvas types
+export * from './canvas';
+
 // ============================================================================
 // Product Types
 // ============================================================================
@@ -99,6 +102,11 @@ export interface RunConfig {
   gapLength?: number;     // metres (for segmented)
   snapTarget: SnapTarget;
   offset: number;         // metres
+  // Custom configuration options
+  customMidCount?: number;   // Override auto-calculated mid count (for continuous)
+  customUnitCount?: number;  // Override auto-calculated section count (for segmented)
+  unitsPerSection?: number;  // Number of units joined together per section (for segmented, default 1)
+  autoFill?: boolean;        // true = auto-calculate, false = use custom values
 }
 
 export interface AreaConfig {
@@ -128,6 +136,9 @@ export interface PlacedElement {
 // ============================================================================
 
 export type ViewMode = 'overview' | 'section';
+
+/** Scheme mode - map-based or custom canvas */
+export type SchemeMode = 'map' | 'canvas';
 
 export interface SectionWindow {
   start: number;  // chainage start (m)
@@ -169,7 +180,10 @@ export interface SchemeState {
   createdAt: string;
   updatedAt: string;
 
-  // Corridor
+  // Mode
+  schemeMode: SchemeMode;
+
+  // Corridor (map mode)
   corridor: Corridor | null;
 
   // Placed elements (ID-keyed)
@@ -195,6 +209,9 @@ export interface SchemeState {
 }
 
 export interface SchemeActions {
+  // Mode
+  setSchemeMode: (mode: SchemeMode) => void;
+
   // Corridor actions
   setCorridor: (geometry: LineString) => void;
   confirmCarriagewayWidth: (width: number) => void;

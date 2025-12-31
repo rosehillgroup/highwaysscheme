@@ -45,16 +45,19 @@ const getMapStyle = () => {
 export interface MapViewHandle {
   flyTo: (center: [number, number], zoom?: number) => void;
   fitBounds: (bounds: [[number, number], [number, number]], padding?: number) => void;
+  getMap: () => maplibregl.Map | null;
 }
 
 interface MapViewProps {
   className?: string;
+  onMapReady?: (map: maplibregl.Map) => void;
 }
 
-const MapView = forwardRef<MapViewHandle, MapViewProps>(({ className = '' }, ref) => {
+const MapView = forwardRef<MapViewHandle, MapViewProps>(({ className = '', onMapReady }, ref) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [mapInstance, setMapInstance] = useState<maplibregl.Map | null>(null);
 
   const corridor = useSchemeStore((state) => state.corridor);
   const isDrawingCorridor = useSchemeStore((state) => state.isDrawingCorridor);
@@ -68,6 +71,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({ className = '' }, ref
     fitBounds: (bounds: [[number, number], [number, number]], padding: number = 100) => {
       map.current?.fitBounds(bounds, { padding, duration: 1500 });
     },
+    getMap: () => map.current,
   }), []);
 
   // Initialize map
@@ -106,6 +110,12 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({ className = '' }, ref
 
     map.current.on('load', () => {
       setMapLoaded(true);
+      setMapInstance(map.current);
+
+      // Notify parent that map is ready
+      if (onMapReady && map.current) {
+        onMapReady(map.current);
+      }
 
       // Add corridor source
       map.current!.addSource('corridor', {
@@ -314,7 +324,7 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(({ className = '' }, ref
 
       {/* Corridor Drawer */}
       <CorridorDrawer
-        map={map.current}
+        map={mapInstance}
         isActive={isDrawingCorridor}
         onComplete={handleDrawComplete}
       />

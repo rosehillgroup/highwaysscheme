@@ -49,6 +49,7 @@ export function resolveRun(
 
 /**
  * Resolve a continuous run (End + Mid + End pattern)
+ * Continuous means NO gaps - all segments abut each other
  */
 function resolveContinuousRun(
   runConfig: RunConfig,
@@ -65,19 +66,20 @@ function resolveContinuousRun(
   const doubleEndModule = modules.find((m) => m.type === 'double-end');
 
   if (!endModule) {
-    // Fallback: treat entire run as single units
+    // Fallback: treat entire run as single units placed continuously
     const unitLength = product.dimensions.length / 1000; // mm to m
     const unitCount = Math.ceil(runLength / unitLength);
+    let currentS = runConfig.startS;
 
     for (let i = 0; i < unitCount; i++) {
-      const startS = runConfig.startS + i * unitLength;
-      const endS = Math.min(startS + unitLength, runConfig.endS);
+      const segmentEnd = currentS + unitLength;
       segments.push({
-        startS,
-        endS,
+        startS: currentS,
+        endS: segmentEnd,
         moduleId: product.id,
         moduleType: 'end',
       });
+      currentS = segmentEnd; // Next segment starts exactly where this one ends
     }
 
     moduleCounts[product.id] = unitCount;
@@ -86,7 +88,7 @@ function resolveContinuousRun(
       segments,
       moduleCounts,
       totalLength: runLength,
-      cuttingRequired: runLength % unitLength !== 0,
+      cuttingRequired: unitCount * unitLength > runLength,
     };
   }
 
@@ -101,7 +103,7 @@ function resolveContinuousRun(
     if (doubleEndModule && runLength >= doubleEndModule.dimensions.length / 1000) {
       segments.push({
         startS: runConfig.startS,
-        endS: runConfig.endS,
+        endS: runConfig.startS + doubleEndModule.dimensions.length / 1000,
         moduleId: doubleEndModule.id,
         moduleType: 'double-end',
       });
@@ -109,7 +111,7 @@ function resolveContinuousRun(
     } else {
       segments.push({
         startS: runConfig.startS,
-        endS: runConfig.endS,
+        endS: runConfig.startS + endLength,
         moduleId: endModule.id,
         moduleType: 'end',
       });
@@ -124,51 +126,54 @@ function resolveContinuousRun(
     };
   }
 
+  // Track current position - segments placed continuously with no gaps
+  let currentS = runConfig.startS;
+
   // Start end unit
   segments.push({
-    startS: runConfig.startS,
-    endS: runConfig.startS + endLength,
+    startS: currentS,
+    endS: currentS + endLength,
     moduleId: endModule.id,
     moduleType: 'end',
   });
+  currentS += endLength;
   moduleCounts[endModule.id] = 1;
 
-  // Mid units
+  // Mid units - placed continuously after start end
   if (midModule) {
-    const midCount = Math.floor(availableForMids / midLength);
-    const actualMidLength = midCount * midLength;
+    // Use custom mid count if specified, otherwise auto-calculate
+    // Use ceiling to ensure we fill the space (last one may need cutting)
+    const autoMidCount = Math.ceil(availableForMids / midLength);
+    const midCount = (runConfig.autoFill === false && runConfig.customMidCount !== undefined)
+      ? Math.max(0, runConfig.customMidCount)
+      : autoMidCount;
 
     for (let i = 0; i < midCount; i++) {
-      const startS = runConfig.startS + endLength + i * midLength;
       segments.push({
-        startS,
-        endS: startS + midLength,
+        startS: currentS,
+        endS: currentS + midLength,
         moduleId: midModule.id,
         moduleType: 'mid',
       });
+      currentS += midLength; // Next segment starts exactly where this one ends
     }
 
     moduleCounts[midModule.id] = midCount;
-
-    // Check if there's a gap that needs cutting
-    const gap = availableForMids - actualMidLength;
-    if (gap > 0.1) {
-      // More than 10cm gap - might need cutting
-    }
   }
 
-  // End end unit
+  // End end unit - placed immediately after last mid
   segments.push({
-    startS: runConfig.endS - endLength,
-    endS: runConfig.endS,
+    startS: currentS,
+    endS: currentS + endLength,
     moduleId: endModule.id,
     moduleType: 'end',
   });
   moduleCounts[endModule.id] = (moduleCounts[endModule.id] || 0) + 1;
 
-  // Calculate if cutting is required
+  // Calculate total module length vs requested run length
   const totalModuleLength = 2 * endLength + (midModule ? (moduleCounts[midModule.id] || 0) * midLength : 0);
-  const cuttingRequired = Math.abs(runLength - totalModuleLength) > 0.1;
+  // Cutting required if total modules exceed the run length (we need to trim the last piece)
+  const cuttingRequired = totalModuleLength > runLength + 0.01;
 
   return {
     segments,
@@ -179,8 +184,9 @@ function resolveContinuousRun(
 }
 
 /**
- * Resolve a segmented run (units with gaps between them)
- * Used for NCLD Lite which has no mid piece
+ * Resolve a segmented run (sections with gaps between them)
+ * Each section can contain multiple units joined together
+ * E.g., 2 units per section = [unit+unit][gap][unit+unit][gap]...
  */
 function resolveSegmentedRun(
   runConfig: RunConfig,
@@ -197,37 +203,49 @@ function resolveSegmentedRun(
   const unitId = unitModule?.id || product.id;
 
   const gapLength = runConfig.gapLength || 2; // Default 2m gap
+  const unitsPerSection = runConfig.unitsPerSection || 1; // Default 1 unit per section
+  const sectionLength = unitLength * unitsPerSection; // Total length of each section
 
-  // Calculate how many units fit with gaps
-  // Pattern: [unit][gap][unit][gap][unit]
-  // Total = N * unitLength + (N-1) * gapLength >= runLength
-  // Solve for N: N >= (runLength + gapLength) / (unitLength + gapLength)
+  // Calculate how many SECTIONS fit with gaps
+  // Pattern: [section][gap][section][gap][section]
+  // Total = N * sectionLength + (N-1) * gapLength <= runLength
+  // Solve for N: N <= (runLength + gapLength) / (sectionLength + gapLength)
 
-  const pitch = unitLength + gapLength;
-  const unitCount = Math.max(1, Math.floor((runLength + gapLength) / pitch));
+  const pitch = sectionLength + gapLength;
+  const autoSectionCount = Math.max(1, Math.floor((runLength + gapLength) / pitch));
 
-  // Calculate actual spacing to distribute units evenly
-  const totalUnitsLength = unitCount * unitLength;
-  const totalGapsLength = runLength - totalUnitsLength;
-  const actualGapLength = unitCount > 1 ? totalGapsLength / (unitCount - 1) : 0;
+  // Use custom section count if specified, otherwise auto-calculate
+  const sectionCount = (runConfig.autoFill === false && runConfig.customUnitCount !== undefined)
+    ? Math.max(1, runConfig.customUnitCount)
+    : autoSectionCount;
+
+  // Calculate actual spacing to distribute sections evenly
+  const totalSectionsLength = sectionCount * sectionLength;
+  const totalGapsLength = runLength - totalSectionsLength;
+  const actualGapLength = sectionCount > 1 ? totalGapsLength / (sectionCount - 1) : 0;
 
   let currentS = runConfig.startS;
 
-  for (let i = 0; i < unitCount; i++) {
-    segments.push({
-      startS: currentS,
-      endS: currentS + unitLength,
-      moduleId: unitId,
-      moduleType: 'end',
-    });
+  for (let i = 0; i < sectionCount; i++) {
+    // Each section contains multiple units placed continuously
+    for (let j = 0; j < unitsPerSection; j++) {
+      segments.push({
+        startS: currentS,
+        endS: currentS + unitLength,
+        moduleId: unitId,
+        moduleType: 'end',
+      });
+      currentS += unitLength; // Units within section are continuous (no gap)
+    }
 
-    currentS += unitLength;
-    if (i < unitCount - 1) {
+    // Add gap after section (except after last section)
+    if (i < sectionCount - 1) {
       currentS += actualGapLength;
     }
   }
 
-  moduleCounts[unitId] = unitCount;
+  // Total units = sections × units per section
+  moduleCounts[unitId] = sectionCount * unitsPerSection;
 
   return {
     segments,
@@ -289,4 +307,56 @@ export function suggestGapLength(
   const gapLength = availableForGaps / (unitCount - 1);
 
   return { gapLength: Math.max(0, gapLength), unitCount };
+}
+
+/**
+ * Calculate auto-fill values for a run configuration
+ * Returns the values that would be used if autoFill is true
+ */
+export function calculateAutoFillValues(
+  runConfig: RunConfig,
+  product: Product
+): { midCount: number; sectionCount: number; totalUnits: number; actualLength: number } {
+  const runLength = runConfig.endS - runConfig.startS;
+  const modules = product.modules || [];
+
+  if (runConfig.layoutMode === 'segmented' || product.layoutMode === 'segmented') {
+    // Segmented layout
+    const unitModule = modules[0];
+    const unitLength = unitModule
+      ? unitModule.dimensions.length / 1000
+      : product.dimensions.length / 1000;
+    const gapLength = runConfig.gapLength || 2;
+    const unitsPerSection = runConfig.unitsPerSection || 1;
+    const sectionLength = unitLength * unitsPerSection;
+    const pitch = sectionLength + gapLength;
+    const sectionCount = Math.max(1, Math.floor((runLength + gapLength) / pitch));
+    const totalUnits = sectionCount * unitsPerSection;
+    const actualLength = sectionCount * sectionLength + (sectionCount - 1) * gapLength;
+
+    return { midCount: 0, sectionCount, totalUnits, actualLength };
+  }
+
+  // Continuous layout
+  const endModule = modules.find((m) => m.type === 'end');
+  const midModule = modules.find((m) => m.type === 'mid' || m.type === 'extension');
+
+  if (!endModule || !midModule) {
+    const unitLength = product.dimensions.length / 1000;
+    const totalUnits = Math.ceil(runLength / unitLength);
+    return { midCount: 0, sectionCount: totalUnits, totalUnits, actualLength: totalUnits * unitLength };
+  }
+
+  const endLength = endModule.dimensions.length / 1000;
+  const midLength = midModule.dimensions.length / 1000;
+  const availableForMids = runLength - 2 * endLength;
+
+  if (availableForMids <= 0) {
+    return { midCount: 0, sectionCount: 1, totalUnits: 2, actualLength: 2 * endLength };
+  }
+
+  const midCount = Math.ceil(availableForMids / midLength);
+  const actualLength = 2 * endLength + midCount * midLength;
+
+  return { midCount, sectionCount: 1, totalUnits: 2 + midCount, actualLength };
 }

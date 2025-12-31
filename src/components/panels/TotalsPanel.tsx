@@ -108,7 +108,7 @@ export default function TotalsPanel() {
                     <div key={product.id} className="bg-white rounded p-2 border border-slate-200">
                       <div className="flex justify-between items-start">
                         <span className="text-sm font-medium text-slate-900">{product.name}</span>
-                        <span className="text-sm font-semibold text-blue-600">
+                        <span className="text-sm font-semibold text-[#FF6B35]">
                           {count} {product.type === 'linear' ? (count === 1 ? 'run' : 'runs') : ''}
                         </span>
                       </div>
