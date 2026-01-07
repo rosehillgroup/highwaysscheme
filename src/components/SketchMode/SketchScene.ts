@@ -8,15 +8,20 @@
 import Phaser from 'phaser';
 import {
   chainageToScreen,
+  chainageToScreenCurved,
   screenToChainage,
+  screenToChainageCurved,
   calculateDepth,
+  calculateDepthCurved,
   createDefaultConfig,
   snapToGrid,
   getScreenBounds,
+  getScreenBoundsCurved,
   TILE_WIDTH,
   TILE_HEIGHT,
   type IsometricConfig,
 } from '@/lib/sketch/coordinates';
+import type { LineString } from 'geojson';
 import {
   getSpriteConfig,
   COLOURS,
@@ -282,6 +287,56 @@ export class SketchScene extends Phaser.Scene {
   }
 
   // ======================================================================
+  // Coordinate Helpers (auto-select straight vs curved)
+  // ======================================================================
+
+  /**
+   * Get corridor geometry if available
+   */
+  private getGeometry(): LineString | null {
+    return this.config?.corridor?.geometry ?? null;
+  }
+
+  /**
+   * Convert chainage to screen, using curved projection if geometry available
+   */
+  private toScreen(s: number, t: number): { x: number; y: number } {
+    if (!this.isoConfig) return { x: 0, y: 0 };
+
+    const geometry = this.getGeometry();
+    if (geometry) {
+      return chainageToScreenCurved(s, t, geometry, this.isoConfig);
+    }
+    return chainageToScreen(s, t, this.isoConfig);
+  }
+
+  /**
+   * Convert screen to chainage, using curved projection if geometry available
+   */
+  private fromScreen(screenX: number, screenY: number): { s: number; t: number } {
+    if (!this.isoConfig) return { s: 0, t: 0 };
+
+    const geometry = this.getGeometry();
+    if (geometry) {
+      return screenToChainageCurved(screenX, screenY, geometry, this.isoConfig);
+    }
+    return screenToChainage(screenX, screenY, this.isoConfig);
+  }
+
+  /**
+   * Calculate depth for sprite sorting
+   */
+  private getDepth(s: number, t: number): number {
+    if (!this.isoConfig) return 0;
+
+    const geometry = this.getGeometry();
+    if (geometry) {
+      return calculateDepthCurved(s, t, geometry, this.isoConfig);
+    }
+    return calculateDepth(s, t, this.isoConfig.scale);
+  }
+
+  // ======================================================================
   // Rendering
   // ======================================================================
 
@@ -298,12 +353,15 @@ export class SketchScene extends Phaser.Scene {
       const vergeWidth = 5;
       const halfWidth = carriageWidth / 2 + vergeWidth + 5; // Include verge + trees
 
-      // Calculate screen bounds of the road area
-      const roadBounds = getScreenBounds(0, totalLength, -halfWidth, halfWidth, this.isoConfig);
+      // Calculate screen bounds - use curved bounds if geometry available
+      const geometry = this.getGeometry();
+      const roadBounds = geometry
+        ? getScreenBoundsCurved(geometry, halfWidth, this.isoConfig)
+        : getScreenBounds(0, totalLength, -halfWidth, halfWidth, this.isoConfig);
       const roadWidth = roadBounds.right - roadBounds.left;
       const roadHeight = roadBounds.bottom - roadBounds.top;
 
-      // Calculate zoom to fit road with padding (80% of viewport)
+      // Calculate zoom to fit road with padding (85% of viewport)
       const viewportWidth = this.scale.width;
       const viewportHeight = this.scale.height;
       const zoomX = (viewportWidth * 0.85) / roadWidth;
@@ -312,9 +370,9 @@ export class SketchScene extends Phaser.Scene {
 
       camera.setZoom(autoZoom);
 
-      // Center on the corridor
+      // Center on the corridor midpoint
       const midS = totalLength / 2;
-      const centerPos = chainageToScreen(midS, 0, this.isoConfig);
+      const centerPos = this.toScreen(midS, 0);
       camera.centerOn(centerPos.x, centerPos.y);
 
       this.hasInitializedCamera = true;
@@ -395,9 +453,7 @@ export class SketchScene extends Phaser.Scene {
 
       // Cycle lane edge line
       graphics.lineStyle(1, 0xffffff, 0.6);
-      const cycleLine = chainageToScreen(startS, cycleMinT, this.isoConfig);
-      const cycleLineEnd = chainageToScreen(endS, cycleMinT, this.isoConfig);
-      graphics.lineBetween(cycleLine.x, cycleLine.y, cycleLineEnd.x, cycleLineEnd.y);
+      this.drawCurvedLine(graphics, startS, endS, cycleMinT);
     }
 
     // ========================================
@@ -420,14 +476,10 @@ export class SketchScene extends Phaser.Scene {
     graphics.lineStyle(2, 0xffffff, 0.9);
 
     // Left edge line
-    const leftEdgeStart = chainageToScreen(startS, -carriageWidth / 2 + 0.3, this.isoConfig);
-    const leftEdgeEnd = chainageToScreen(endS, -carriageWidth / 2 + 0.3, this.isoConfig);
-    graphics.lineBetween(leftEdgeStart.x, leftEdgeStart.y, leftEdgeEnd.x, leftEdgeEnd.y);
+    this.drawCurvedLine(graphics, startS, endS, -carriageWidth / 2 + 0.3);
 
     // Right edge line
-    const rightEdgeStart = chainageToScreen(startS, carriageWidth / 2 - 0.3, this.isoConfig);
-    const rightEdgeEnd = chainageToScreen(endS, carriageWidth / 2 - 0.3, this.isoConfig);
-    graphics.lineBetween(rightEdgeStart.x, rightEdgeStart.y, rightEdgeEnd.x, rightEdgeEnd.y);
+    this.drawCurvedLine(graphics, startS, endS, carriageWidth / 2 - 0.3);
 
     // ========================================
     // 5. Draw dashed centreline
@@ -438,9 +490,7 @@ export class SketchScene extends Phaser.Scene {
 
     for (let s = 0; s < totalLength; s += dashLength + gapLength) {
       const dashEnd = Math.min(s + dashLength, totalLength);
-      const p1 = chainageToScreen(s, 0, this.isoConfig);
-      const p2 = chainageToScreen(dashEnd, 0, this.isoConfig);
-      graphics.lineBetween(p1.x, p1.y, p2.x, p2.y);
+      this.drawCurvedLine(graphics, s, dashEnd, 0);
     }
 
     // ========================================
@@ -449,14 +499,10 @@ export class SketchScene extends Phaser.Scene {
     graphics.lineStyle(3, 0x2a3540, 1);
 
     // Left kerb
-    const leftKerbStart = chainageToScreen(startS, -carriageWidth / 2, this.isoConfig);
-    const leftKerbEnd = chainageToScreen(endS, -carriageWidth / 2, this.isoConfig);
-    graphics.lineBetween(leftKerbStart.x, leftKerbStart.y, leftKerbEnd.x, leftKerbEnd.y);
+    this.drawCurvedLine(graphics, startS, endS, -carriageWidth / 2);
 
     // Right kerb
-    const rightKerbStart = chainageToScreen(startS, carriageWidth / 2, this.isoConfig);
-    const rightKerbEnd = chainageToScreen(endS, carriageWidth / 2, this.isoConfig);
-    graphics.lineBetween(rightKerbStart.x, rightKerbStart.y, rightKerbEnd.x, rightKerbEnd.y);
+    this.drawCurvedLine(graphics, startS, endS, carriageWidth / 2);
 
     this.groundLayer.add(graphics);
   }
@@ -512,7 +558,7 @@ export class SketchScene extends Phaser.Scene {
     // Check if texture exists
     if (!this.textures.exists(buildingType)) return;
 
-    const pos = chainageToScreen(s, t, this.isoConfig);
+    const pos = this.toScreen(s, t);
     const building = this.add.sprite(pos.x, pos.y, buildingType);
 
     // Scale buildings - slightly larger than trees for background presence
@@ -522,7 +568,7 @@ export class SketchScene extends Phaser.Scene {
     building.setOrigin(0.5, 0.95);
 
     // Set depth lower than trees so they appear behind
-    building.setDepth(calculateDepth(s, t, this.isoConfig.scale) + 50);
+    building.setDepth(this.getDepth(s, t) + 50);
 
     this.buildingLayer.add(building);
     this.buildingSprites.push(building);
@@ -549,24 +595,24 @@ export class SketchScene extends Phaser.Scene {
 
     this.gridGraphics.lineStyle(1, 0xcccccc, 0.3);
 
-    // Draw vertical lines (constant chainage)
+    // Draw lines perpendicular to road (constant chainage)
     for (let s = 0; s <= totalLength; s += gridSize) {
-      const p1 = chainageToScreen(s, -carriageWidth, this.isoConfig);
-      const p2 = chainageToScreen(s, carriageWidth, this.isoConfig);
+      // For curved corridors, these become short perpendicular segments
+      const p1 = this.toScreen(s, -carriageWidth);
+      const p2 = this.toScreen(s, carriageWidth);
       this.gridGraphics.lineBetween(p1.x, p1.y, p2.x, p2.y);
     }
 
-    // Draw horizontal lines (constant offset)
+    // Draw lines parallel to road (constant offset)
     for (let t = -carriageWidth; t <= carriageWidth; t += gridSize) {
-      const p1 = chainageToScreen(0, t, this.isoConfig);
-      const p2 = chainageToScreen(totalLength, t, this.isoConfig);
-      this.gridGraphics.lineBetween(p1.x, p1.y, p2.x, p2.y);
+      // For curved corridors, draw curved parallel lines
+      this.drawCurvedLine(this.gridGraphics, 0, totalLength, t, gridSize);
     }
 
     // Draw chainage labels
     if (this.config.showChainageLabels) {
       for (let s = 0; s <= totalLength; s += 50) {
-        const pos = chainageToScreen(s, -carriageWidth - 2, this.isoConfig);
+        const pos = this.toScreen(s, -carriageWidth - 2);
         const label = this.add.text(pos.x, pos.y, `${s}m`, {
           fontSize: '10px',
           color: '#666666',
@@ -607,15 +653,11 @@ export class SketchScene extends Phaser.Scene {
       }
 
       // Update position
-      const pos = chainageToScreen(
-        element.position.s,
-        element.position.t,
-        this.isoConfig!
-      );
+      const pos = this.toScreen(element.position.s, element.position.t);
       sprite.setPosition(pos.x, pos.y);
 
       // Update depth for sorting
-      sprite.setDepth(calculateDepth(element.position.s, element.position.t, this.isoConfig!.scale));
+      sprite.setDepth(this.getDepth(element.position.s, element.position.t));
 
       // Update selection/hover state
       this.updateSpriteState(sprite, isSelected, isHovered);
@@ -669,7 +711,7 @@ export class SketchScene extends Phaser.Scene {
     // Check if texture exists
     if (!this.textures.exists(treeType)) return;
 
-    const pos = chainageToScreen(s, t, this.isoConfig);
+    const pos = this.toScreen(s, t);
     const tree = this.add.sprite(pos.x, pos.y, treeType);
 
     // Scale trees to fit the larger tile dimensions
@@ -679,7 +721,7 @@ export class SketchScene extends Phaser.Scene {
     tree.setOrigin(0.5, 0.9);
 
     // Set depth for proper sorting
-    tree.setDepth(calculateDepth(s, t, this.isoConfig.scale) + 100);
+    tree.setDepth(this.getDepth(s, t) + 100);
 
     this.sceneryLayer.add(tree);
     this.treeSprites.push(tree);
@@ -731,17 +773,21 @@ export class SketchScene extends Phaser.Scene {
     // Lane offset (drive on left in UK)
     const laneOffset = forward ? -carriageWidth / 4 : carriageWidth / 4;
 
-    // Start and end positions
+    // Start and end chainage values
     const startS = forward ? -20 : totalLength + 20;
     const endS = forward ? totalLength + 20 : -20;
 
-    const startPos = chainageToScreen(startS, laneOffset, this.isoConfig);
-    const endPos = chainageToScreen(endS, laneOffset, this.isoConfig);
+    const startPos = this.toScreen(Math.max(0, Math.min(totalLength, startS)), laneOffset);
 
     // Create car sprite - scaled to match larger tile dimensions
     const car = this.add.sprite(startPos.x, startPos.y, carType);
     car.setScale(0.18);
     car.setOrigin(0.5, 0.7);
+
+    // Store chainage data on the car
+    car.setData('chainage', startS);
+    car.setData('laneOffset', laneOffset);
+    car.setData('forward', forward);
 
     this.trafficLayer.add(car);
     this.carSprites.push(car);
@@ -749,25 +795,26 @@ export class SketchScene extends Phaser.Scene {
     // Calculate duration based on road length (roughly 30-40 km/h)
     const duration = totalLength * 80 + 2000; // ~80ms per metre
 
-    // Animate the car driving along the road
+    // Animate the chainage value, then update position from it
     this.tweens.add({
       targets: car,
-      x: endPos.x,
-      y: endPos.y,
+      chainage: endS, // Tween the chainage data
       duration: duration,
       ease: 'Linear',
       onUpdate: () => {
-        // Update depth as car moves
-        if (this.isoConfig) {
-          // Approximate chainage from screen position
-          const progress = forward
-            ? (car.x - startPos.x) / (endPos.x - startPos.x)
-            : (startPos.x - car.x) / (startPos.x - endPos.x);
-          const currentS = forward
-            ? progress * totalLength
-            : totalLength - progress * totalLength;
-          car.setDepth(calculateDepth(currentS, laneOffset, this.isoConfig.scale));
-        }
+        // Get current chainage from tween
+        const currentS = car.getData('chainage') as number;
+        const t = car.getData('laneOffset') as number;
+
+        // Clamp to valid corridor range for rendering
+        const clampedS = Math.max(0, Math.min(totalLength, currentS));
+
+        // Update position using curved projection
+        const pos = this.toScreen(clampedS, t);
+        car.setPosition(pos.x, pos.y);
+
+        // Update depth for proper sorting
+        car.setDepth(this.getDepth(clampedS, t));
       },
       onComplete: () => {
         car.destroy();
@@ -884,6 +931,10 @@ export class SketchScene extends Phaser.Scene {
   // Drawing Helpers
   // ======================================================================
 
+  /**
+   * Get points for a filled area between two chainage values and two t offsets.
+   * For curved corridors, samples along the path to create a smooth polygon.
+   */
   private getIsometricQuad(
     startS: number,
     endS: number,
@@ -892,17 +943,85 @@ export class SketchScene extends Phaser.Scene {
   ): Phaser.Geom.Point[] {
     if (!this.isoConfig) return [];
 
-    const tl = chainageToScreen(startS, minT, this.isoConfig);
-    const tr = chainageToScreen(startS, maxT, this.isoConfig);
-    const br = chainageToScreen(endS, maxT, this.isoConfig);
-    const bl = chainageToScreen(endS, minT, this.isoConfig);
+    const geometry = this.getGeometry();
 
-    return [
-      new Phaser.Geom.Point(tl.x, tl.y),
-      new Phaser.Geom.Point(tr.x, tr.y),
-      new Phaser.Geom.Point(br.x, br.y),
-      new Phaser.Geom.Point(bl.x, bl.y),
-    ];
+    // For straight corridors or no geometry, just use 4 corners
+    if (!geometry) {
+      const tl = chainageToScreen(startS, minT, this.isoConfig);
+      const tr = chainageToScreen(startS, maxT, this.isoConfig);
+      const br = chainageToScreen(endS, maxT, this.isoConfig);
+      const bl = chainageToScreen(endS, minT, this.isoConfig);
+
+      return [
+        new Phaser.Geom.Point(tl.x, tl.y),
+        new Phaser.Geom.Point(tr.x, tr.y),
+        new Phaser.Geom.Point(br.x, br.y),
+        new Phaser.Geom.Point(bl.x, bl.y),
+      ];
+    }
+
+    // For curved corridors, sample along the path
+    const sampleInterval = 5; // Sample every 5 metres
+    const leftEdge: Phaser.Geom.Point[] = [];
+    const rightEdge: Phaser.Geom.Point[] = [];
+
+    for (let s = startS; s <= endS; s += sampleInterval) {
+      const leftPt = this.toScreen(s, minT);
+      const rightPt = this.toScreen(s, maxT);
+      leftEdge.push(new Phaser.Geom.Point(leftPt.x, leftPt.y));
+      rightEdge.push(new Phaser.Geom.Point(rightPt.x, rightPt.y));
+    }
+
+    // Ensure we include the end point
+    if (leftEdge.length === 0 || (endS - startS) % sampleInterval !== 0) {
+      const leftPt = this.toScreen(endS, minT);
+      const rightPt = this.toScreen(endS, maxT);
+      leftEdge.push(new Phaser.Geom.Point(leftPt.x, leftPt.y));
+      rightEdge.push(new Phaser.Geom.Point(rightPt.x, rightPt.y));
+    }
+
+    // Create polygon: left edge forward, then right edge backward
+    return [...leftEdge, ...rightEdge.reverse()];
+  }
+
+  /**
+   * Draw a line along the corridor at a constant lateral offset.
+   * For curved corridors, samples along the path for smooth curves.
+   */
+  private drawCurvedLine(
+    graphics: Phaser.GameObjects.Graphics,
+    startS: number,
+    endS: number,
+    t: number,
+    sampleInterval: number = 3
+  ): void {
+    const geometry = this.getGeometry();
+
+    // For short lines or no geometry, draw straight
+    if (!geometry || endS - startS <= sampleInterval) {
+      const p1 = this.toScreen(startS, t);
+      const p2 = this.toScreen(endS, t);
+      graphics.lineBetween(p1.x, p1.y, p2.x, p2.y);
+      return;
+    }
+
+    // For curved corridors, draw line segments
+    graphics.beginPath();
+    const firstPt = this.toScreen(startS, t);
+    graphics.moveTo(firstPt.x, firstPt.y);
+
+    for (let s = startS + sampleInterval; s <= endS; s += sampleInterval) {
+      const pt = this.toScreen(s, t);
+      graphics.lineTo(pt.x, pt.y);
+    }
+
+    // Ensure we hit the end point
+    if ((endS - startS) % sampleInterval !== 0) {
+      const endPt = this.toScreen(endS, t);
+      graphics.lineTo(endPt.x, endPt.y);
+    }
+
+    graphics.strokePath();
   }
 
   private drawIsometricTop(
@@ -1003,7 +1122,7 @@ export class SketchScene extends Phaser.Scene {
 
       // If in placement mode, place the product
       if (this.config?.placementMode && !this.config.placementMode.isRun) {
-        const chainage = screenToChainage(pointer.worldX, pointer.worldY, this.isoConfig);
+        const chainage = this.fromScreen(pointer.worldX, pointer.worldY);
         // Snap to grid if enabled
         const snapped = this.config?.snapToGrid
           ? snapToGrid(chainage.s, chainage.t, 5)
@@ -1026,7 +1145,7 @@ export class SketchScene extends Phaser.Scene {
     if (this.draggedElement && pointer.isDown) {
       const newX = pointer.worldX - this.dragOffset.x;
       const newY = pointer.worldY - this.dragOffset.y;
-      const chainage = screenToChainage(newX, newY, this.isoConfig);
+      const chainage = this.fromScreen(newX, newY);
 
       // Snap to grid if enabled
       const snapped = this.config?.snapToGrid

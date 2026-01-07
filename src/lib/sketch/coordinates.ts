@@ -3,7 +3,18 @@
  *
  * Converts between chainage coordinates (s, t) and isometric screen coordinates.
  * Uses a 2:1 isometric projection (tile width = 2 × tile height).
+ *
+ * Supports both straight corridors (linear projection) and curved corridors
+ * (geometry-aware projection using actual corridor path).
  */
+
+import type { LineString } from 'geojson';
+import {
+  getPointAtChainage,
+  chainageToLngLat,
+  lngLatToChainage as geoLngLatToChainage,
+  sampleCorridorPoints,
+} from '../corridor/chainage';
 
 // ============================================================================
 // Constants
@@ -257,4 +268,251 @@ export function chainageRotationToScreen(corridorRotation: number): number {
   // For now, just apply the corridor-relative rotation directly
   // (products like signs face perpendicular to traffic flow)
   return corridorRotation;
+}
+
+// ============================================================================
+// Curved Corridor Support
+// ============================================================================
+
+export interface LocalCoord {
+  x: number; // Local X in metres (east from origin)
+  y: number; // Local Y in metres (north from origin)
+}
+
+export interface CurvedIsometricConfig extends IsometricConfig {
+  geometry: LineString; // Corridor geometry
+  localOrigin: [number, number]; // [lng, lat] of local coordinate origin
+}
+
+/**
+ * Convert geographic coordinates (lng, lat) to local projected coordinates (metres)
+ * Uses simple equirectangular projection, accurate for small areas.
+ *
+ * @param lngLat - Geographic coordinates [longitude, latitude]
+ * @param origin - Origin point [longitude, latitude]
+ * @returns Local coordinates in metres
+ */
+export function lngLatToLocal(
+  lngLat: [number, number],
+  origin: [number, number]
+): LocalCoord {
+  const [lng, lat] = lngLat;
+  const [originLng, originLat] = origin;
+
+  // Metres per degree at this latitude
+  const metersPerDegreeLat = 111320; // Roughly constant
+  const metersPerDegreeLng = 111320 * Math.cos((originLat * Math.PI) / 180);
+
+  return {
+    x: (lng - originLng) * metersPerDegreeLng,
+    y: (lat - originLat) * metersPerDegreeLat,
+  };
+}
+
+/**
+ * Convert local projected coordinates (metres) to geographic coordinates
+ *
+ * @param local - Local coordinates in metres
+ * @param origin - Origin point [longitude, latitude]
+ * @returns Geographic coordinates [longitude, latitude]
+ */
+export function localToLngLat(
+  local: LocalCoord,
+  origin: [number, number]
+): [number, number] {
+  const [originLng, originLat] = origin;
+
+  const metersPerDegreeLat = 111320;
+  const metersPerDegreeLng = 111320 * Math.cos((originLat * Math.PI) / 180);
+
+  return [
+    originLng + local.x / metersPerDegreeLng,
+    originLat + local.y / metersPerDegreeLat,
+  ];
+}
+
+/**
+ * Convert local coordinates to isometric screen coordinates
+ *
+ * @param local - Local coordinates in metres
+ * @param config - Isometric configuration
+ * @returns Screen coordinates in pixels
+ */
+export function localToScreen(
+  local: LocalCoord,
+  config: IsometricConfig
+): ScreenCoord {
+  // Convert metres to grid units
+  const gridX = local.x / config.scale;
+  const gridY = local.y / config.scale;
+
+  // Isometric projection (2:1 ratio)
+  // X axis extends to bottom-right, Y axis extends to top-right
+  // We want: increasing local X → down-right, increasing local Y → up-right
+  const screenX = (gridX + gridY) * (config.tileWidth / 2);
+  const screenY = (gridX - gridY) * (config.tileHeight / 2);
+
+  return {
+    x: config.originX + screenX,
+    y: config.originY + screenY,
+  };
+}
+
+/**
+ * Convert screen coordinates to local coordinates
+ *
+ * @param screen - Screen coordinates in pixels
+ * @param config - Isometric configuration
+ * @returns Local coordinates in metres
+ */
+export function screenToLocal(
+  screen: ScreenCoord,
+  config: IsometricConfig
+): LocalCoord {
+  const dx = screen.x - config.originX;
+  const dy = screen.y - config.originY;
+
+  // Inverse isometric projection
+  const gridX = (dx / (config.tileWidth / 2) + dy / (config.tileHeight / 2)) / 2;
+  const gridY = (dx / (config.tileWidth / 2) - dy / (config.tileHeight / 2)) / 2;
+
+  return {
+    x: gridX * config.scale,
+    y: gridY * config.scale,
+  };
+}
+
+/**
+ * Convert chainage coordinates to screen coordinates using curved corridor geometry.
+ *
+ * This function:
+ * 1. Gets the geographic point at chainage (s, t) using corridor geometry
+ * 2. Projects to local coordinates relative to corridor origin
+ * 3. Applies isometric projection to get screen coordinates
+ *
+ * @param s - Distance along corridor (metres)
+ * @param t - Lateral offset from centreline (metres, positive = right)
+ * @param geometry - Corridor LineString geometry
+ * @param config - Isometric configuration
+ * @returns Screen coordinates in pixels
+ */
+export function chainageToScreenCurved(
+  s: number,
+  t: number,
+  geometry: LineString,
+  config: IsometricConfig
+): ScreenCoord {
+  // Get geographic coordinates at this chainage position
+  const lngLat = chainageToLngLat(geometry, s, t);
+
+  if (!lngLat) {
+    // Fallback to straight projection if outside corridor bounds
+    return chainageToScreen(s, t, config);
+  }
+
+  // Use corridor start point as local origin
+  const localOrigin = geometry.coordinates[0] as [number, number];
+
+  // Convert to local coordinates
+  const local = lngLatToLocal(lngLat, localOrigin);
+
+  // Apply isometric projection
+  return localToScreen(local, config);
+}
+
+/**
+ * Convert screen coordinates to chainage coordinates using curved corridor geometry.
+ *
+ * @param screenX - Screen X position (pixels)
+ * @param screenY - Screen Y position (pixels)
+ * @param geometry - Corridor LineString geometry
+ * @param config - Isometric configuration
+ * @returns Chainage coordinates in metres
+ */
+export function screenToChainageCurved(
+  screenX: number,
+  screenY: number,
+  geometry: LineString,
+  config: IsometricConfig
+): ChainageCoord {
+  // Convert screen to local coordinates
+  const local = screenToLocal({ x: screenX, y: screenY }, config);
+
+  // Use corridor start point as local origin
+  const localOrigin = geometry.coordinates[0] as [number, number];
+
+  // Convert local to geographic coordinates
+  const lngLat = localToLngLat(local, localOrigin);
+
+  // Project onto corridor to get chainage
+  const chainage = geoLngLatToChainage(geometry, lngLat);
+
+  return {
+    s: chainage.s,
+    t: chainage.t,
+  };
+}
+
+/**
+ * Calculate screen bounding box for a curved corridor
+ *
+ * @param geometry - Corridor LineString geometry
+ * @param halfWidth - Half the road width in metres
+ * @param config - Isometric configuration
+ * @param sampleInterval - Distance between sample points (metres)
+ * @returns Screen bounding box
+ */
+export function getScreenBoundsCurved(
+  geometry: LineString,
+  halfWidth: number,
+  config: IsometricConfig,
+  sampleInterval: number = 10
+): { left: number; top: number; right: number; bottom: number } {
+  const points = sampleCorridorPoints(geometry, sampleInterval);
+  const screenPoints: ScreenCoord[] = [];
+
+  for (const point of points) {
+    // Sample both edges of the road
+    screenPoints.push(chainageToScreenCurved(point.s, -halfWidth, geometry, config));
+    screenPoints.push(chainageToScreenCurved(point.s, halfWidth, geometry, config));
+  }
+
+  if (screenPoints.length === 0) {
+    return { left: 0, top: 0, right: 0, bottom: 0 };
+  }
+
+  return {
+    left: Math.min(...screenPoints.map((p) => p.x)),
+    top: Math.min(...screenPoints.map((p) => p.y)),
+    right: Math.max(...screenPoints.map((p) => p.x)),
+    bottom: Math.max(...screenPoints.map((p) => p.y)),
+  };
+}
+
+/**
+ * Calculate depth for curved corridors.
+ * Uses local coordinates for proper isometric depth sorting.
+ *
+ * @param s - Distance along corridor (metres)
+ * @param t - Lateral offset from centreline (metres)
+ * @param geometry - Corridor LineString geometry
+ * @param config - Isometric configuration
+ * @returns Depth value for sorting
+ */
+export function calculateDepthCurved(
+  s: number,
+  t: number,
+  geometry: LineString,
+  config: IsometricConfig
+): number {
+  const lngLat = chainageToLngLat(geometry, s, t);
+  if (!lngLat) {
+    return calculateDepth(s, t, config.scale);
+  }
+
+  const localOrigin = geometry.coordinates[0] as [number, number];
+  const local = lngLatToLocal(lngLat, localOrigin);
+
+  // Depth increases with x + y (bottom-right is in front)
+  return (local.x + local.y) / config.scale;
 }
