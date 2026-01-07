@@ -10,9 +10,9 @@
 // ============================================================================
 
 // Tile dimensions for 2:1 isometric projection
-// Smaller tiles = more compact view
-export const TILE_WIDTH = 8; // pixels per grid unit
-export const TILE_HEIGHT = 4; // pixels per grid unit
+// Larger tiles = road fills more of the canvas
+export const TILE_WIDTH = 32; // pixels per grid unit
+export const TILE_HEIGHT = 16; // pixels per grid unit
 
 // Default scale: metres per grid unit
 // Higher scale = more metres fit in view

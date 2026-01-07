@@ -12,6 +12,7 @@ import {
   calculateDepth,
   createDefaultConfig,
   snapToGrid,
+  getScreenBounds,
   TILE_WIDTH,
   TILE_HEIGHT,
   type IsometricConfig,
@@ -58,11 +59,11 @@ export interface SketchSceneEvents {
 // ============================================================================
 
 const ASSETS = {
-  // Cars
-  CAR_JEEP_N: 'car-jeep-n',
-  CAR_JEEP_S: 'car-jeep-s',
-  CAR_TAXI_N: 'car-taxi-n',
-  CAR_TAXI_S: 'car-taxi-s',
+  // Cars - E/W for diagonal isometric movement along corridor
+  CAR_JEEP_E: 'car-jeep-e',
+  CAR_JEEP_W: 'car-jeep-w',
+  CAR_TAXI_E: 'car-taxi-e',
+  CAR_TAXI_W: 'car-taxi-w',
   // Trees
   TREE_PINE_1: 'tree-pine-1',
   TREE_PINE_2: 'tree-pine-2',
@@ -82,9 +83,9 @@ const TREE_TYPES = [
   ASSETS.TREE_4,
 ];
 
-// Car types for variety
-const CAR_TYPES_FORWARD = [ASSETS.CAR_JEEP_S, ASSETS.CAR_TAXI_S];
-const CAR_TYPES_BACKWARD = [ASSETS.CAR_JEEP_N, ASSETS.CAR_TAXI_N];
+// Car types - corridor runs diagonally in isometric view, so use E/W sprites
+const CAR_TYPES_FORWARD = [ASSETS.CAR_JEEP_E, ASSETS.CAR_TAXI_E];
+const CAR_TYPES_BACKWARD = [ASSETS.CAR_JEEP_W, ASSETS.CAR_TAXI_W];
 
 export class SketchScene extends Phaser.Scene {
   private config: SketchSceneConfig | null = null;
@@ -129,11 +130,11 @@ export class SketchScene extends Phaser.Scene {
   // ======================================================================
 
   preload(): void {
-    // Load car sprites
-    this.load.image(ASSETS.CAR_JEEP_N, '/sketch-assets/cars/jeepn.png');
-    this.load.image(ASSETS.CAR_JEEP_S, '/sketch-assets/cars/jeeps.png');
-    this.load.image(ASSETS.CAR_TAXI_N, '/sketch-assets/cars/taxin.png');
-    this.load.image(ASSETS.CAR_TAXI_S, '/sketch-assets/cars/taxis.png');
+    // Load car sprites - E/W for diagonal isometric movement
+    this.load.image(ASSETS.CAR_JEEP_E, '/sketch-assets/cars/jeepe.png');
+    this.load.image(ASSETS.CAR_JEEP_W, '/sketch-assets/cars/jeepw.png');
+    this.load.image(ASSETS.CAR_TAXI_E, '/sketch-assets/cars/taxie.png');
+    this.load.image(ASSETS.CAR_TAXI_W, '/sketch-assets/cars/taxiw.png');
 
     // Load tree sprites
     this.load.image(ASSETS.TREE_PINE_1, '/sketch-assets/props/1x1pine_1.png');
@@ -256,26 +257,46 @@ export class SketchScene extends Phaser.Scene {
     if (!this.config || !this.isoConfig) return;
 
     const camera = this.cameras.main;
-    camera.setZoom(this.config.zoom);
 
-    // On first load, center the camera on the corridor
+    // On first load, auto-fit and center the camera on the corridor
     if (!this.hasInitializedCamera && this.config.corridor) {
       const corridor = this.config.corridor;
-      const midS = corridor.totalLength / 2;
-      const midT = 0;
+      const totalLength = corridor.totalLength;
+      const carriageWidth = corridor.carriageway.width;
+      const vergeWidth = 5;
+      const halfWidth = carriageWidth / 2 + vergeWidth + 5; // Include verge + trees
 
-      // Get screen position of corridor center
-      const centerPos = chainageToScreen(midS, midT, this.isoConfig);
+      // Calculate screen bounds of the road area
+      const roadBounds = getScreenBounds(0, totalLength, -halfWidth, halfWidth, this.isoConfig);
+      const roadWidth = roadBounds.right - roadBounds.left;
+      const roadHeight = roadBounds.bottom - roadBounds.top;
 
-      // Center the camera on the corridor
+      // Calculate zoom to fit road with padding (80% of viewport)
+      const viewportWidth = this.scale.width;
+      const viewportHeight = this.scale.height;
+      const zoomX = (viewportWidth * 0.85) / roadWidth;
+      const zoomY = (viewportHeight * 0.85) / roadHeight;
+      const autoZoom = Math.min(zoomX, zoomY, 2.5); // Cap at 2.5x
+
+      camera.setZoom(autoZoom);
+
+      // Center on the corridor
+      const midS = totalLength / 2;
+      const centerPos = chainageToScreen(midS, 0, this.isoConfig);
       camera.centerOn(centerPos.x, centerPos.y);
+
       this.hasInitializedCamera = true;
-    } else if (this.config.cameraOffset.x !== 0 || this.config.cameraOffset.y !== 0) {
-      // Use manual camera offset if set
-      camera.setScroll(
-        this.config.cameraOffset.x - this.scale.width / 2,
-        this.config.cameraOffset.y - this.scale.height / 2
-      );
+    } else {
+      // Use manual zoom from config
+      camera.setZoom(this.config.zoom);
+
+      if (this.config.cameraOffset.x !== 0 || this.config.cameraOffset.y !== 0) {
+        // Use manual camera offset if set
+        camera.setScroll(
+          this.config.cameraOffset.x - this.scale.width / 2,
+          this.config.cameraOffset.y - this.scale.height / 2
+        );
+      }
     }
   }
 
@@ -522,7 +543,8 @@ export class SketchScene extends Phaser.Scene {
 
     // Tree spacing (every 15-25m with some randomness)
     const baseSpacing = 20;
-    const treeOffset = carriageWidth / 2 + vergeWidth / 2; // Center of verge
+    // Position trees at edge of verge, not obscuring road
+    const treeOffset = carriageWidth / 2 + vergeWidth + 2; // Edge of verge + buffer
 
     // Place trees on both sides
     for (let s = 10; s < totalLength - 10; s += baseSpacing + (Math.random() * 10 - 5)) {
@@ -551,8 +573,8 @@ export class SketchScene extends Phaser.Scene {
     const pos = chainageToScreen(s, t, this.isoConfig);
     const tree = this.add.sprite(pos.x, pos.y, treeType);
 
-    // Scale trees down to fit the scene better
-    tree.setScale(0.4 + Math.random() * 0.2);
+    // Scale trees to fit the larger tile dimensions
+    tree.setScale(0.15 + Math.random() * 0.05);
 
     // Set origin at bottom center for proper positioning
     tree.setOrigin(0.5, 0.9);
@@ -617,9 +639,9 @@ export class SketchScene extends Phaser.Scene {
     const startPos = chainageToScreen(startS, laneOffset, this.isoConfig);
     const endPos = chainageToScreen(endS, laneOffset, this.isoConfig);
 
-    // Create car sprite
+    // Create car sprite - scaled to match larger tile dimensions
     const car = this.add.sprite(startPos.x, startPos.y, carType);
-    car.setScale(0.5);
+    car.setScale(0.18);
     car.setOrigin(0.5, 0.7);
 
     this.trafficLayer.add(car);
