@@ -21,6 +21,15 @@ import {
   TILE_HEIGHT,
   type IsometricConfig,
 } from '@/lib/sketch/coordinates';
+import {
+  canvasChainageToScreen,
+  screenToCanvasChainage,
+  calculateCanvasChainageDepth,
+  getCanvasRoadScreenBounds,
+  getRoadLength,
+  getCanvasProductScreenPosition,
+  getCanvasProductDepth,
+} from '@/lib/canvas/canvasToSketch';
 import type { LineString } from 'geojson';
 import {
   getSpriteConfig,
@@ -28,14 +37,22 @@ import {
   type SpriteConfig,
 } from '@/lib/sketch/sprites';
 import type { PlacedElement, Corridor, Product } from '@/types';
+import type { RoadSegment, CanvasProduct } from '@/types/canvas';
 
 // ============================================================================
 // Types
 // ============================================================================
 
 export interface SketchSceneConfig {
+  // Mode indicator
+  dataSource: 'canvas' | 'map' | null;
+  // Map mode data
   corridor: Corridor | null;
   elements: Record<string, PlacedElement>;
+  // Canvas mode data
+  canvasRoads: RoadSegment[];
+  canvasProducts: CanvasProduct[];
+  // Common data
   products: Product[];
   scale: number;
   zoom: number;
@@ -287,53 +304,120 @@ export class SketchScene extends Phaser.Scene {
   }
 
   // ======================================================================
-  // Coordinate Helpers (auto-select straight vs curved)
+  // Coordinate Helpers (auto-select mode: canvas vs map vs straight)
   // ======================================================================
 
   /**
-   * Get corridor geometry if available
+   * Check if we're in canvas mode
+   */
+  private isCanvasMode(): boolean {
+    return this.config?.dataSource === 'canvas';
+  }
+
+  /**
+   * Get the active canvas road (first road for now)
+   */
+  private getActiveCanvasRoad(): RoadSegment | null {
+    if (!this.isCanvasMode() || !this.config?.canvasRoads?.length) {
+      return null;
+    }
+    return this.config.canvasRoads[0];
+  }
+
+  /**
+   * Get corridor geometry if available (Map mode only)
    */
   private getGeometry(): LineString | null {
+    if (this.isCanvasMode()) return null;
     return this.config?.corridor?.geometry ?? null;
   }
 
   /**
-   * Convert chainage to screen, using curved projection if geometry available
+   * Convert chainage to screen, handling canvas/map modes
    */
   private toScreen(s: number, t: number): { x: number; y: number } {
     if (!this.isoConfig) return { x: 0, y: 0 };
 
+    // Canvas mode: use canvas coordinate projection
+    const canvasRoad = this.getActiveCanvasRoad();
+    if (canvasRoad) {
+      return canvasChainageToScreen(s, t, canvasRoad, this.isoConfig);
+    }
+
+    // Map mode: use geographic projection
     const geometry = this.getGeometry();
     if (geometry) {
       return chainageToScreenCurved(s, t, geometry, this.isoConfig);
     }
+
+    // Fallback: straight projection
     return chainageToScreen(s, t, this.isoConfig);
   }
 
   /**
-   * Convert screen to chainage, using curved projection if geometry available
+   * Convert screen to chainage, handling canvas/map modes
    */
   private fromScreen(screenX: number, screenY: number): { s: number; t: number } {
     if (!this.isoConfig) return { s: 0, t: 0 };
 
+    // Canvas mode
+    const canvasRoad = this.getActiveCanvasRoad();
+    if (canvasRoad) {
+      return screenToCanvasChainage(screenX, screenY, canvasRoad, this.isoConfig);
+    }
+
+    // Map mode
     const geometry = this.getGeometry();
     if (geometry) {
       return screenToChainageCurved(screenX, screenY, geometry, this.isoConfig);
     }
+
+    // Fallback
     return screenToChainage(screenX, screenY, this.isoConfig);
   }
 
   /**
-   * Calculate depth for sprite sorting
+   * Calculate depth for sprite sorting, handling canvas/map modes
    */
   private getDepth(s: number, t: number): number {
     if (!this.isoConfig) return 0;
 
+    // Canvas mode
+    const canvasRoad = this.getActiveCanvasRoad();
+    if (canvasRoad) {
+      return calculateCanvasChainageDepth(s, t, canvasRoad, this.isoConfig.scale);
+    }
+
+    // Map mode
     const geometry = this.getGeometry();
     if (geometry) {
       return calculateDepthCurved(s, t, geometry, this.isoConfig);
     }
+
+    // Fallback
     return calculateDepth(s, t, this.isoConfig.scale);
+  }
+
+  /**
+   * Get the total corridor/road length
+   */
+  private getTotalLength(): number {
+    const canvasRoad = this.getActiveCanvasRoad();
+    if (canvasRoad) {
+      return getRoadLength(canvasRoad);
+    }
+    return this.config?.corridor?.totalLength ?? 0;
+  }
+
+  /**
+   * Get the carriageway width
+   */
+  private getCarriageWidth(): number {
+    const canvasRoad = this.getActiveCanvasRoad();
+    if (canvasRoad) {
+      return canvasRoad.width;
+    }
+    return this.config?.corridor?.carriageway?.width ?? 6.5;
   }
 
   // ======================================================================
@@ -345,32 +429,44 @@ export class SketchScene extends Phaser.Scene {
 
     const camera = this.cameras.main;
 
-    // On first load, auto-fit and center the camera on the corridor
-    if (!this.hasInitializedCamera && this.config.corridor) {
-      const corridor = this.config.corridor;
-      const totalLength = corridor.totalLength;
-      const carriageWidth = corridor.carriageway.width;
-      const vergeWidth = 5;
-      const halfWidth = carriageWidth / 2 + vergeWidth + 5; // Include verge + trees
+    // Check if we have any road data
+    const totalLength = this.getTotalLength();
+    const hasRoadData = totalLength > 0;
 
-      // Calculate screen bounds - use curved bounds if geometry available
-      const geometry = this.getGeometry();
-      const roadBounds = geometry
-        ? getScreenBoundsCurved(geometry, halfWidth, this.isoConfig)
-        : getScreenBounds(0, totalLength, -halfWidth, halfWidth, this.isoConfig);
+    // On first load, auto-fit and center the camera on the corridor/road
+    if (!this.hasInitializedCamera && hasRoadData) {
+      const carriageWidth = this.getCarriageWidth();
+      const vergeWidth = 5;
+      const halfWidth = carriageWidth / 2 + vergeWidth + 5;
+
+      // Calculate screen bounds based on mode
+      let roadBounds: { left: number; top: number; right: number; bottom: number };
+
+      const canvasRoad = this.getActiveCanvasRoad();
+      if (canvasRoad) {
+        // Canvas mode
+        roadBounds = getCanvasRoadScreenBounds(canvasRoad, this.isoConfig);
+      } else {
+        // Map mode
+        const geometry = this.getGeometry();
+        roadBounds = geometry
+          ? getScreenBoundsCurved(geometry, halfWidth, this.isoConfig)
+          : getScreenBounds(0, totalLength, -halfWidth, halfWidth, this.isoConfig);
+      }
+
       const roadWidth = roadBounds.right - roadBounds.left;
       const roadHeight = roadBounds.bottom - roadBounds.top;
 
       // Calculate zoom to fit road with padding (85% of viewport)
       const viewportWidth = this.scale.width;
       const viewportHeight = this.scale.height;
-      const zoomX = (viewportWidth * 0.85) / roadWidth;
-      const zoomY = (viewportHeight * 0.85) / roadHeight;
+      const zoomX = (viewportWidth * 0.85) / Math.max(1, roadWidth);
+      const zoomY = (viewportHeight * 0.85) / Math.max(1, roadHeight);
       const autoZoom = Math.min(zoomX, zoomY, 2.5); // Cap at 2.5x
 
       camera.setZoom(autoZoom);
 
-      // Center on the corridor midpoint
+      // Center on the road midpoint
       const midS = totalLength / 2;
       const centerPos = this.toScreen(midS, 0);
       camera.centerOn(centerPos.x, centerPos.y);
@@ -391,13 +487,15 @@ export class SketchScene extends Phaser.Scene {
   }
 
   private renderGround(): void {
-    if (!this.groundLayer || !this.config?.corridor || !this.isoConfig) return;
+    if (!this.groundLayer || !this.isoConfig) return;
+
+    // Check if we have any road data
+    const totalLength = this.getTotalLength();
+    if (totalLength <= 0) return;
 
     this.groundLayer.removeAll(true);
 
-    const { corridor } = this.config;
-    const totalLength = corridor.totalLength;
-    const carriageWidth = corridor.carriageway.width;
+    const carriageWidth = this.getCarriageWidth();
     const vergeWidth = 5; // 5m grass verge on each side
 
     const graphics = this.add.graphics();
@@ -433,9 +531,11 @@ export class SketchScene extends Phaser.Scene {
     // ========================================
     // 2. Draw cycle lane if present
     // ========================================
-    if (corridor.cycleLane?.enabled) {
-      const cycleWidth = corridor.cycleLane.width;
-      const side = corridor.cycleLane.side;
+    const canvasRoad = this.getActiveCanvasRoad();
+    const cycleLane = canvasRoad?.cycleLane ?? this.config?.corridor?.cycleLane;
+    if (cycleLane?.enabled) {
+      const cycleWidth = cycleLane.width;
+      const side = cycleLane.side;
       const baseOffset = carriageWidth / 2;
 
       let cycleMinT: number, cycleMaxT: number;
@@ -511,15 +611,17 @@ export class SketchScene extends Phaser.Scene {
    * Render buildings behind the trees on both sides of the road
    */
   private renderBuildings(): void {
-    if (!this.buildingLayer || !this.config?.corridor || !this.isoConfig || !this.assetsLoaded) return;
+    if (!this.buildingLayer || !this.isoConfig || !this.assetsLoaded) return;
+
+    // Check if we have any road data
+    const totalLength = this.getTotalLength();
+    if (totalLength <= 0) return;
 
     // Clear existing buildings
     this.buildingSprites.forEach((building) => building.destroy());
     this.buildingSprites = [];
 
-    const { corridor } = this.config;
-    const totalLength = corridor.totalLength;
-    const carriageWidth = corridor.carriageway.width;
+    const carriageWidth = this.getCarriageWidth();
     const vergeWidth = 5;
 
     // Building spacing (every 20-30m with variety)
@@ -586,11 +688,11 @@ export class SketchScene extends Phaser.Scene {
       }
     });
 
-    if (!this.config.showGrid || !this.config.corridor) return;
+    // Check if we should show grid and have road data
+    const totalLength = this.getTotalLength();
+    if (!this.config.showGrid || totalLength <= 0) return;
 
-    const { corridor } = this.config;
-    const totalLength = corridor.totalLength;
-    const carriageWidth = corridor.carriageway.width;
+    const carriageWidth = this.getCarriageWidth();
     const gridSize = 10; // 10m grid
 
     this.gridGraphics.lineStyle(1, 0xcccccc, 0.3);
@@ -626,18 +728,22 @@ export class SketchScene extends Phaser.Scene {
   private renderProducts(): void {
     if (!this.productLayer || !this.config || !this.isoConfig) return;
 
-    const { elements, products, selectedElementId, hoveredElementId } = this.config;
-    const existingIds = new Set(Object.keys(elements));
+    const { elements, canvasProducts, products, selectedElementId, hoveredElementId } = this.config;
+
+    // Collect all IDs we expect to render
+    const mapElementIds = new Set(Object.keys(elements));
+    const canvasProductIds = new Set(canvasProducts.map((p) => p.id));
+    const allIds = new Set([...mapElementIds, ...canvasProductIds]);
 
     // Remove sprites for deleted elements
     for (const [id, sprite] of this.productSprites) {
-      if (!existingIds.has(id)) {
+      if (!allIds.has(id)) {
         sprite.destroy();
         this.productSprites.delete(id);
       }
     }
 
-    // Update or create sprites for each element
+    // Render Map mode elements
     for (const element of Object.values(elements)) {
       const product = products.find((p) => p.id === element.productId);
       if (!product) continue;
@@ -663,6 +769,43 @@ export class SketchScene extends Phaser.Scene {
       this.updateSpriteState(sprite, isSelected, isHovered);
     }
 
+    // Render Canvas mode products
+    const canvasRoad = this.getActiveCanvasRoad();
+    for (const canvasProduct of canvasProducts) {
+      const product = products.find((p) => p.id === canvasProduct.productId);
+      if (!product) continue;
+
+      let sprite = this.productSprites.get(canvasProduct.id);
+      const isSelected = canvasProduct.id === selectedElementId;
+      const isHovered = canvasProduct.id === hoveredElementId;
+
+      if (!sprite) {
+        // Create sprite using a compatible element structure
+        const fakeElement: PlacedElement = {
+          id: canvasProduct.id,
+          productId: canvasProduct.productId,
+          position: 's' in canvasProduct.position
+            ? { s: canvasProduct.position.s, t: canvasProduct.position.t, rotation: canvasProduct.rotation }
+            : { s: 0, t: 0, rotation: canvasProduct.rotation },
+          type: canvasProduct.placementMode === 'linear' ? 'run' : 'discrete',
+        };
+        sprite = this.createProductSprite(fakeElement, product);
+        this.productSprites.set(canvasProduct.id, sprite);
+        this.productLayer.add(sprite);
+      }
+
+      // Update position using Canvas-specific projection
+      const pos = getCanvasProductScreenPosition(canvasProduct, canvasRoad, this.isoConfig);
+      sprite.setPosition(pos.x, pos.y);
+
+      // Update depth for sorting
+      const depth = getCanvasProductDepth(canvasProduct, canvasRoad, this.isoConfig.scale);
+      sprite.setDepth(depth);
+
+      // Update selection/hover state
+      this.updateSpriteState(sprite, isSelected, isHovered);
+    }
+
     // Sort by depth
     this.productLayer.sort('depth');
   }
@@ -671,15 +814,17 @@ export class SketchScene extends Phaser.Scene {
    * Render trees and scenery along the verges
    */
   private renderScenery(): void {
-    if (!this.sceneryLayer || !this.config?.corridor || !this.isoConfig || !this.assetsLoaded) return;
+    if (!this.sceneryLayer || !this.isoConfig || !this.assetsLoaded) return;
+
+    // Check if we have any road data
+    const totalLength = this.getTotalLength();
+    if (totalLength <= 0) return;
 
     // Clear existing trees
     this.treeSprites.forEach((tree) => tree.destroy());
     this.treeSprites = [];
 
-    const { corridor } = this.config;
-    const totalLength = corridor.totalLength;
-    const carriageWidth = corridor.carriageway.width;
+    const carriageWidth = this.getCarriageWidth();
     const vergeWidth = 5;
 
     // Tree spacing (every 15-25m with some randomness)
@@ -731,7 +876,9 @@ export class SketchScene extends Phaser.Scene {
    * Start spawning animated cars
    */
   private startTrafficAnimation(): void {
-    if (!this.config?.corridor || !this.isoConfig || !this.assetsLoaded) return;
+    // Check if we have any road data
+    const totalLength = this.getTotalLength();
+    if (totalLength <= 0 || !this.isoConfig || !this.assetsLoaded) return;
 
     // Stop existing timer if any
     if (this.carSpawnTimer) {
@@ -757,11 +904,12 @@ export class SketchScene extends Phaser.Scene {
    * Spawn a car that drives along the corridor
    */
   private spawnCar(forward: boolean): void {
-    if (!this.trafficLayer || !this.config?.corridor || !this.isoConfig) return;
+    if (!this.trafficLayer || !this.isoConfig) return;
 
-    const { corridor } = this.config;
-    const totalLength = corridor.totalLength;
-    const carriageWidth = corridor.carriageway.width;
+    const totalLength = this.getTotalLength();
+    if (totalLength <= 0) return;
+
+    const carriageWidth = this.getCarriageWidth();
 
     // Pick random car type
     const carTypes = forward ? CAR_TYPES_FORWARD : CAR_TYPES_BACKWARD;

@@ -3,15 +3,21 @@
  *
  * Mounts and manages the Phaser game instance for isometric visualisation.
  * Bridges React state (Zustand stores) with the Phaser scene.
+ *
+ * Supports two data sources:
+ * - Map mode: Corridor from schemeStore (geographic coordinates)
+ * - Canvas mode: Roads from canvasStore (Cartesian coordinates)
  */
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useMemo } from 'react';
 import Phaser from 'phaser';
 import { SketchScene } from './SketchScene';
 import { useSchemeStore } from '@/stores/schemeStore';
 import { useSketchStore } from '@/stores/sketchStore';
+import { useCanvasStore } from '@/stores/canvasStore';
 import products from '@/data/products.json';
 import type { Product } from '@/types';
+import type { RoadSegment, CanvasProduct } from '@/types/canvas';
 
 // ============================================================================
 // Component
@@ -28,13 +34,23 @@ export function SketchCanvas({ className, placementMode, onPlacementComplete }: 
   const gameRef = useRef<Phaser.Game | null>(null);
   const sceneRef = useRef<SketchScene | null>(null);
 
-  // Scheme store
+  // Scheme store (Map mode)
   const corridor = useSchemeStore((state) => state.corridor);
   const elements = useSchemeStore((state) => state.elements);
   const selectedElementId = useSchemeStore((state) => state.selectedElementId);
   const selectElement = useSchemeStore((state) => state.selectElement);
   const updateElement = useSchemeStore((state) => state.updateElement);
   const addElement = useSchemeStore((state) => state.addElement);
+
+  // Canvas store (Canvas mode)
+  const canvasRoads = useCanvasStore((state) => state.roads);
+  const canvasRoadOrder = useCanvasStore((state) => state.roadOrder);
+  const canvasProducts = useCanvasStore((state) => state.products);
+  const canvasSelectedRoadIds = useCanvasStore((state) => state.selection.selectedRoadIds);
+  const canvasSelectedProductIds = useCanvasStore((state) => state.selection.selectedProductIds);
+  const addCanvasProduct = useCanvasStore((state) => state.addProduct);
+  const updateCanvasProduct = useCanvasStore((state) => state.updateProduct);
+  const selectCanvasProduct = useCanvasStore((state) => state.selectProduct);
 
   // Sketch store
   const scale = useSketchStore((state) => state.scale);
@@ -48,6 +64,25 @@ export function SketchCanvas({ className, placementMode, onPlacementComplete }: 
 
   // Product list
   const productList: Product[] = products.products as Product[];
+
+  // ======================================================================
+  // Mode Detection and Data Preparation
+  // ======================================================================
+
+  // Determine data source: Canvas mode takes priority over Map mode
+  const hasCanvasData = canvasRoadOrder.length > 0;
+  const hasMapData = corridor !== null;
+  const dataSource: 'canvas' | 'map' | null = hasCanvasData ? 'canvas' : hasMapData ? 'map' : null;
+
+  // Prepare Canvas roads in render order
+  const canvasRoadsArray = useMemo(() => {
+    return canvasRoadOrder.map((id) => canvasRoads[id]).filter(Boolean) as RoadSegment[];
+  }, [canvasRoads, canvasRoadOrder]);
+
+  // Prepare Canvas products array
+  const canvasProductsArray = useMemo(() => {
+    return Object.values(canvasProducts) as CanvasProduct[];
+  }, [canvasProducts]);
 
   // ======================================================================
   // Event Handlers
@@ -143,8 +178,15 @@ export function SketchCanvas({ className, placementMode, onPlacementComplete }: 
       // Initial configuration
       scene.setConfig(
         {
+          // Mode
+          dataSource,
+          // Map mode data
           corridor,
           elements,
+          // Canvas mode data
+          canvasRoads: canvasRoadsArray,
+          canvasProducts: canvasProductsArray,
+          // Common data
           products: productList,
           scale,
           zoom,
@@ -181,8 +223,15 @@ export function SketchCanvas({ className, placementMode, onPlacementComplete }: 
 
     sceneRef.current.setConfig(
       {
+        // Mode
+        dataSource,
+        // Map mode data
         corridor,
         elements,
+        // Canvas mode data
+        canvasRoads: canvasRoadsArray,
+        canvasProducts: canvasProductsArray,
+        // Common data
         products: productList,
         scale,
         zoom,
@@ -202,8 +251,11 @@ export function SketchCanvas({ className, placementMode, onPlacementComplete }: 
       }
     );
   }, [
+    dataSource,
     corridor,
     elements,
+    canvasRoadsArray,
+    canvasProductsArray,
     productList,
     scale,
     zoom,
