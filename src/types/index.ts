@@ -137,8 +137,8 @@ export interface PlacedElement {
 
 export type ViewMode = 'overview' | 'section';
 
-/** Scheme mode - map-based or custom canvas */
-export type SchemeMode = 'map' | 'canvas';
+/** Scheme mode - map-based, custom canvas, or isometric sketch */
+export type SchemeMode = 'map' | 'canvas' | 'sketch';
 
 export interface SectionWindow {
   start: number;  // chainage start (m)

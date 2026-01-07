@@ -79,11 +79,31 @@ export interface CanvasExportData {
 // Store Actions Interface
 // ============================================================================
 
+// Drag state for element movement
+export interface DragState {
+  isDragging: boolean;
+  elementType: 'junction' | 'signage' | 'furniture' | 'product' | null;
+  elementId: string | null;
+  startPosition: CanvasPoint | null;
+  startMouseCanvas: CanvasPoint | null;
+}
+
 interface CanvasActions {
   // Viewport
   setPan: (pan: CanvasPoint) => void;
   setZoom: (zoom: number) => void;
   resetViewport: () => void;
+
+  // Drag
+  startDrag: (
+    elementType: DragState['elementType'],
+    elementId: string,
+    startPosition: CanvasPoint,
+    mouseCanvasPos: CanvasPoint
+  ) => void;
+  updateDrag: (currentMouseCanvas: CanvasPoint) => void;
+  endDrag: () => void;
+  cancelDrag: () => void;
 
   // Tools
   setActiveTool: (tool: DrawTool) => void;
@@ -152,6 +172,7 @@ interface CanvasStoreState extends CustomCanvasState {
   historyIndex: number;
   canUndo: boolean;
   canRedo: boolean;
+  dragState: DragState;
 }
 
 export type CanvasStore = CanvasStoreState & CanvasActions;
@@ -197,6 +218,14 @@ const createInitialState = (): CanvasStoreState => ({
   historyIndex: -1,
   canUndo: false,
   canRedo: false,
+  // Drag state
+  dragState: {
+    isDragging: false,
+    elementType: null,
+    elementId: null,
+    startPosition: null,
+    startMouseCanvas: null,
+  },
 });
 
 // ============================================================================
@@ -251,6 +280,185 @@ export const useCanvasStore = create<CanvasStore>()(
         set((state) => ({
           toolOptions: { ...state.toolOptions, ...options },
         }));
+      },
+
+      // ======================================================================
+      // Drag Actions
+      // ======================================================================
+
+      startDrag: (
+        elementType: DragState['elementType'],
+        elementId: string,
+        startPosition: CanvasPoint,
+        mouseCanvasPos: CanvasPoint
+      ) => {
+        set({
+          dragState: {
+            isDragging: true,
+            elementType,
+            elementId,
+            startPosition,
+            startMouseCanvas: mouseCanvasPos,
+          },
+        });
+      },
+
+      updateDrag: (currentMouseCanvas: CanvasPoint) => {
+        const state = get();
+        const { dragState, snapToGrid: snapEnabled, gridSize } = state;
+
+        if (
+          !dragState.isDragging ||
+          !dragState.startPosition ||
+          !dragState.startMouseCanvas ||
+          !dragState.elementId ||
+          !dragState.elementType
+        ) {
+          return;
+        }
+
+        // Calculate delta from drag start
+        const deltaX = currentMouseCanvas.x - dragState.startMouseCanvas.x;
+        const deltaY = currentMouseCanvas.y - dragState.startMouseCanvas.y;
+
+        // Calculate new position
+        let newX = dragState.startPosition.x + deltaX;
+        let newY = dragState.startPosition.y + deltaY;
+
+        // Apply grid snapping if enabled
+        if (snapEnabled) {
+          newX = Math.round(newX / gridSize) * gridSize;
+          newY = Math.round(newY / gridSize) * gridSize;
+        }
+
+        const newPosition = { x: newX, y: newY };
+
+        // Update the appropriate element (without pushing to history during drag)
+        if (dragState.elementType === 'junction') {
+          const junction = state.junctions[dragState.elementId];
+          if (junction) {
+            set((s) => ({
+              junctions: {
+                ...s.junctions,
+                [dragState.elementId!]: { ...junction, position: newPosition },
+              },
+            }));
+          }
+        } else if (dragState.elementType === 'signage') {
+          const sign = state.signage[dragState.elementId];
+          if (sign) {
+            set((s) => ({
+              signage: {
+                ...s.signage,
+                [dragState.elementId!]: { ...sign, position: newPosition },
+              },
+            }));
+          }
+        } else if (dragState.elementType === 'furniture') {
+          const item = state.furniture[dragState.elementId];
+          if (item) {
+            set((s) => ({
+              furniture: {
+                ...s.furniture,
+                [dragState.elementId!]: { ...item, position: newPosition },
+              },
+            }));
+          }
+        } else if (dragState.elementType === 'product') {
+          const product = state.products[dragState.elementId];
+          if (product) {
+            set((s) => ({
+              products: {
+                ...s.products,
+                [dragState.elementId!]: { ...product, position: newPosition },
+              },
+            }));
+          }
+        }
+      },
+
+      endDrag: () => {
+        const { dragState } = get();
+        if (dragState.isDragging) {
+          // Push to history after drag completes
+          get().pushHistory();
+        }
+        set({
+          dragState: {
+            isDragging: false,
+            elementType: null,
+            elementId: null,
+            startPosition: null,
+            startMouseCanvas: null,
+          },
+        });
+      },
+
+      cancelDrag: () => {
+        const state = get();
+        const { dragState } = state;
+
+        // Restore original position if we were dragging
+        if (
+          dragState.isDragging &&
+          dragState.startPosition &&
+          dragState.elementId &&
+          dragState.elementType
+        ) {
+          const originalPosition = dragState.startPosition;
+
+          if (dragState.elementType === 'junction') {
+            const junction = state.junctions[dragState.elementId];
+            if (junction) {
+              set((s) => ({
+                junctions: {
+                  ...s.junctions,
+                  [dragState.elementId!]: { ...junction, position: originalPosition },
+                },
+              }));
+            }
+          } else if (dragState.elementType === 'signage') {
+            const sign = state.signage[dragState.elementId];
+            if (sign) {
+              set((s) => ({
+                signage: {
+                  ...s.signage,
+                  [dragState.elementId!]: { ...sign, position: originalPosition },
+                },
+              }));
+            }
+          } else if (dragState.elementType === 'furniture') {
+            const item = state.furniture[dragState.elementId];
+            if (item) {
+              set((s) => ({
+                furniture: {
+                  ...s.furniture,
+                  [dragState.elementId!]: { ...item, position: originalPosition },
+                },
+              }));
+            }
+          } else if (dragState.elementType === 'product') {
+            const product = state.products[dragState.elementId];
+            if (product) {
+              set((s) => ({
+                products: {
+                  ...s.products,
+                  [dragState.elementId!]: { ...product, position: originalPosition },
+                },
+              }));
+            }
+          }
+        }
+
+        set({
+          dragState: {
+            isDragging: false,
+            elementType: null,
+            elementId: null,
+            startPosition: null,
+            startMouseCanvas: null,
+          },
+        });
       },
 
       // ======================================================================

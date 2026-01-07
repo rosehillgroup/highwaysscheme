@@ -44,6 +44,23 @@ const CustomCanvasView = dynamic(() => import('@/components/custom-canvas/Custom
   ),
 });
 
+const SketchCanvas = dynamic(
+  () => import('@/components/SketchMode/SketchCanvas').then((mod) => mod.SketchCanvas),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-full flex items-center justify-center bg-slate-100">
+        <div className="text-slate-500">Loading sketch view...</div>
+      </div>
+    ),
+  }
+);
+
+const SketchToolbar = dynamic(
+  () => import('@/components/SketchMode/SketchToolbar').then((mod) => mod.SketchToolbar),
+  { ssr: false }
+);
+
 export default function Home() {
   const mapRef = useRef<MapViewHandle>(null);
   const [mapInstance, setMapInstance] = useState<maplibregl.Map | null>(null);
@@ -64,8 +81,10 @@ export default function Home() {
   // Canvas store state
   const canvasSelection = useCanvasStore((state) => state.selection);
 
-  // Check if we're in canvas mode
+  // Check mode
   const isCanvasMode = schemeMode === 'canvas';
+  const isSketchMode = schemeMode === 'sketch';
+  const isMapMode = schemeMode === 'map';
 
   // Determine if canvas has any selection
   const hasCanvasSelection =
@@ -150,7 +169,7 @@ export default function Home() {
           <button
             onClick={() => setSchemeMode('map')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-              !isCanvasMode
+              isMapMode
                 ? 'bg-white text-slate-900 shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
@@ -159,6 +178,20 @@ export default function Home() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
             </svg>
             Map
+          </button>
+          <button
+            onClick={() => setSchemeMode('sketch')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              isSketchMode
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+            title="Isometric visualisation view"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Sketch
           </button>
           <button
             onClick={() => setSchemeMode('canvas')}
@@ -176,14 +209,14 @@ export default function Home() {
         </div>
 
         {/* Search Box - only show in map mode */}
-        {!isCanvasMode && (
+        {isMapMode && (
           <div className="flex-1 max-w-md">
             <SearchBox onSelect={handleSearchSelect} />
           </div>
         )}
 
-        {/* Spacer for canvas mode */}
-        {isCanvasMode && <div className="flex-1" />}
+        {/* Spacer for canvas/sketch mode */}
+        {(isCanvasMode || isSketchMode) && <div className="flex-1" />}
 
         {/* Scheme Name */}
         <div className="flex items-center gap-2">
@@ -194,7 +227,7 @@ export default function Home() {
             className="px-2 py-1 text-sm font-medium text-slate-900 bg-transparent border-b border-transparent hover:border-slate-300 focus:border-[#FF6B35] focus:outline-none"
             placeholder="Untitled Scheme"
           />
-          {!isCanvasMode && corridor && (
+          {(isMapMode || isSketchMode) && corridor && (
             <span className="text-sm text-slate-400">
               •{' '}
               {corridor.totalLength >= 1000
@@ -205,7 +238,7 @@ export default function Home() {
         </div>
 
         {/* Status indicator - map mode only */}
-        {!isCanvasMode && corridor && (
+        {isMapMode && corridor && (
           <div className="flex items-center gap-2">
             <span
               className={`w-2 h-2 rounded-full ${
@@ -226,8 +259,16 @@ export default function Home() {
           </div>
         )}
 
+        {/* Sketch mode indicator */}
+        {isSketchMode && (
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-blue-500" />
+            <span className="text-xs text-slate-500">Isometric View</span>
+          </div>
+        )}
+
         {/* Placement mode indicator - map mode only */}
-        {!isCanvasMode && placementMode && (
+        {isMapMode && placementMode && (
           <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
             placementMode.isRun ? 'bg-purple-100' : 'bg-[#FFF0EB]'
           }`}>
@@ -274,6 +315,28 @@ export default function Home() {
           {isCanvasMode ? (
             /* Custom Canvas Mode */
             <CustomCanvasView />
+          ) : isSketchMode ? (
+            /* Sketch Mode - Isometric Visualisation */
+            <div className="flex flex-col h-full">
+              <SketchToolbar />
+              <div className="flex-1 relative">
+                <SketchCanvas className="w-full h-full" />
+                {/* Empty state if no corridor */}
+                {!corridor && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-slate-50">
+                    <div className="text-center p-8">
+                      <svg className="w-16 h-16 mx-auto mb-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                      </svg>
+                      <h3 className="text-lg font-semibold text-slate-700 mb-2">No Corridor Defined</h3>
+                      <p className="text-sm text-slate-500 max-w-xs">
+                        Switch to Map mode and draw a corridor to visualise products in Sketch mode.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           ) : (
             /* Map Mode */
             <>

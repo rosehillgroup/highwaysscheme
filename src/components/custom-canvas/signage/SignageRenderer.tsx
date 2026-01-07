@@ -12,6 +12,7 @@ interface SignageRendererProps {
   isHovered: boolean;
   onSelect?: (id: string) => void;
   onHover?: (id: string | null) => void;
+  onDragStart?: (id: string, position: { x: number; y: number }, e: React.MouseEvent) => void;
 }
 
 // Get sign definition from data
@@ -35,6 +36,7 @@ const SignageRenderer = memo(function SignageRenderer({
   isHovered,
   onSelect,
   onHover,
+  onDragStart,
 }: SignageRendererProps) {
   const pixelsPerMetre = 100 * viewport.zoom;
   const definition = getSignDefinition(sign.signType);
@@ -70,6 +72,15 @@ const SignageRenderer = memo(function SignageRenderer({
     onSelect?.(sign.id);
   };
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only start drag if already selected and left mouse button
+    if (isSelected && e.button === 0 && onDragStart) {
+      e.stopPropagation();
+      e.preventDefault();
+      onDragStart(sign.id, sign.position, e);
+    }
+  };
+
   const handleMouseEnter = () => {
     onHover?.(sign.id);
   };
@@ -86,9 +97,10 @@ const SignageRenderer = memo(function SignageRenderer({
       className="road-sign"
       transform={transform}
       onClick={handleClick}
+      onMouseDown={handleMouseDown}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: isSelected ? 'grab' : 'pointer' }}
     >
       <g transform={signTransform}>
         {/* Selection highlight */}
@@ -188,6 +200,7 @@ interface SignageLayerProps {
   hoveredSignId: string | null;
   onSelectSign?: (id: string | null) => void;
   onHoverSign?: (id: string | null) => void;
+  onDragStart?: (id: string, position: { x: number; y: number }, e: React.MouseEvent) => void;
 }
 
 export const SignageLayer = memo(function SignageLayer({
@@ -197,6 +210,7 @@ export const SignageLayer = memo(function SignageLayer({
   hoveredSignId,
   onSelectSign,
   onHoverSign,
+  onDragStart,
 }: SignageLayerProps) {
   return (
     <g className="signage-layer">
@@ -209,6 +223,7 @@ export const SignageLayer = memo(function SignageLayer({
           isHovered={hoveredSignId === sign.id}
           onSelect={onSelectSign}
           onHover={onHoverSign}
+          onDragStart={onDragStart}
         />
       ))}
     </g>

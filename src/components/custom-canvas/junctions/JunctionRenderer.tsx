@@ -20,6 +20,7 @@ interface JunctionRendererProps {
   isHovered: boolean;
   onSelect?: (id: string) => void;
   onHover?: (id: string | null) => void;
+  onDragStart?: (id: string, position: { x: number; y: number }, e: React.MouseEvent) => void;
 }
 
 /**
@@ -39,6 +40,7 @@ const JunctionRenderer = memo(function JunctionRenderer({
   isHovered,
   onSelect,
   onHover,
+  onDragStart,
 }: JunctionRendererProps) {
   const pixelsPerMetre = 100 * viewport.zoom;
 
@@ -119,6 +121,15 @@ const JunctionRenderer = memo(function JunctionRenderer({
     onSelect?.(junction.id);
   };
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only start drag if already selected and left mouse button
+    if (isSelected && e.button === 0 && onDragStart) {
+      e.stopPropagation();
+      e.preventDefault();
+      onDragStart(junction.id, junction.position, e);
+    }
+  };
+
   const handleMouseEnter = () => {
     onHover?.(junction.id);
   };
@@ -132,9 +143,10 @@ const JunctionRenderer = memo(function JunctionRenderer({
       className="junction"
       transform={transform}
       onClick={handleClick}
+      onMouseDown={handleMouseDown}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: isSelected ? 'grab' : 'pointer' }}
     >
       {/* Selection highlight */}
       {isSelected && (
@@ -293,6 +305,7 @@ interface JunctionsLayerProps {
   hoveredJunctionId: string | null;
   onSelectJunction?: (id: string | null) => void;
   onHoverJunction?: (id: string | null) => void;
+  onDragStart?: (id: string, position: { x: number; y: number }, e: React.MouseEvent) => void;
 }
 
 export const JunctionsLayer = memo(function JunctionsLayer({
@@ -303,6 +316,7 @@ export const JunctionsLayer = memo(function JunctionsLayer({
   hoveredJunctionId,
   onSelectJunction,
   onHoverJunction,
+  onDragStart,
 }: JunctionsLayerProps) {
   return (
     <g className="junctions-layer">
@@ -316,6 +330,7 @@ export const JunctionsLayer = memo(function JunctionsLayer({
           isHovered={hoveredJunctionId === junction.id}
           onSelect={onSelectJunction}
           onHover={onHoverJunction}
+          onDragStart={onDragStart}
         />
       ))}
     </g>

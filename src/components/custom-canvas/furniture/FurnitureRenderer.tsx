@@ -12,6 +12,7 @@ interface FurnitureRendererProps {
   isHovered: boolean;
   onSelect?: (id: string) => void;
   onHover?: (id: string | null) => void;
+  onDragStart?: (id: string, position: { x: number; y: number }, e: React.MouseEvent) => void;
 }
 
 // Get furniture definition from data
@@ -36,6 +37,7 @@ const FurnitureRenderer = memo(function FurnitureRenderer({
   isHovered,
   onSelect,
   onHover,
+  onDragStart,
 }: FurnitureRendererProps) {
   const pixelsPerMetre = 100 * viewport.zoom;
   const definition = getFurnitureDefinition(furniture.furnitureType);
@@ -72,6 +74,15 @@ const FurnitureRenderer = memo(function FurnitureRenderer({
     onSelect?.(furniture.id);
   };
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only start drag if already selected and left mouse button
+    if (isSelected && e.button === 0 && onDragStart) {
+      e.stopPropagation();
+      e.preventDefault();
+      onDragStart(furniture.id, furniture.position, e);
+    }
+  };
+
   const handleMouseEnter = () => {
     onHover?.(furniture.id);
   };
@@ -88,9 +99,10 @@ const FurnitureRenderer = memo(function FurnitureRenderer({
       className="street-furniture"
       transform={transform}
       onClick={handleClick}
+      onMouseDown={handleMouseDown}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: isSelected ? 'grab' : 'pointer' }}
     >
       <g transform={furnitureTransform}>
         {/* Selection highlight */}
@@ -174,6 +186,7 @@ interface FurnitureLayerProps {
   hoveredFurnitureId: string | null;
   onSelectFurniture?: (id: string | null) => void;
   onHoverFurniture?: (id: string | null) => void;
+  onDragStart?: (id: string, position: { x: number; y: number }, e: React.MouseEvent) => void;
 }
 
 export const FurnitureLayer = memo(function FurnitureLayer({
@@ -183,6 +196,7 @@ export const FurnitureLayer = memo(function FurnitureLayer({
   hoveredFurnitureId,
   onSelectFurniture,
   onHoverFurniture,
+  onDragStart,
 }: FurnitureLayerProps) {
   return (
     <g className="furniture-layer">
@@ -195,6 +209,7 @@ export const FurnitureLayer = memo(function FurnitureLayer({
           isHovered={hoveredFurnitureId === item.id}
           onSelect={onSelectFurniture}
           onHover={onHoverFurniture}
+          onDragStart={onDragStart}
         />
       ))}
     </g>

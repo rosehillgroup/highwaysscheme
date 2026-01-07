@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useCallback, useState, useEffect, ChangeEvent } from 'react';
-import { useCanvasStore } from '@/stores/canvasStore';
+import { useCanvasStore, screenToCanvas, type DragState } from '@/stores/canvasStore';
 import CanvasViewport from './CanvasViewport';
 import CanvasGrid from './CanvasGrid';
 import { RoadsLayer, RoadDrawer } from './roads';
@@ -90,6 +90,11 @@ export default function CustomCanvasView() {
   const canRedo = useCanvasStore((state) => state.canRedo);
   const exportCanvas = useCanvasStore((state) => state.exportCanvas);
   const importCanvas = useCanvasStore((state) => state.importCanvas);
+  const dragState = useCanvasStore((state) => state.dragState);
+  const startDrag = useCanvasStore((state) => state.startDrag);
+  const updateDrag = useCanvasStore((state) => state.updateDrag);
+  const endDrag = useCanvasStore((state) => state.endDrag);
+  const cancelDrag = useCanvasStore((state) => state.cancelDrag);
 
   // Get selected IDs
   const selectedRoadId = selection.selectedRoadIds[0] || null;
@@ -497,6 +502,100 @@ export default function CustomCanvasView() {
     e.target.value = '';
   }, [importCanvas]);
 
+  // ======================================================================
+  // Drag Handlers
+  // ======================================================================
+
+  // Handle drag start - called by renderer components when mousedown on selected element
+  const handleDragStart = useCallback(
+    (
+      elementType: DragState['elementType'],
+      elementId: string,
+      startPosition: CanvasPoint,
+      mouseEvent: React.MouseEvent
+    ) => {
+      if (activeTool !== 'select') return;
+
+      const container = containerRef.current;
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+      const mouseCanvasPos = screenToCanvas(
+        mouseEvent.clientX,
+        mouseEvent.clientY,
+        viewport,
+        rect
+      );
+
+      startDrag(elementType, elementId, startPosition, mouseCanvasPos);
+    },
+    [activeTool, viewport, startDrag]
+  );
+
+  // Handle mouse move during drag
+  const handleDragMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (!dragState.isDragging) return;
+
+      const container = containerRef.current;
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+      const mouseCanvasPos = screenToCanvas(
+        e.clientX,
+        e.clientY,
+        viewport,
+        rect
+      );
+
+      updateDrag(mouseCanvasPos);
+    },
+    [dragState.isDragging, viewport, updateDrag]
+  );
+
+  // Handle mouse up to end drag
+  const handleDragMouseUp = useCallback(() => {
+    if (dragState.isDragging) {
+      endDrag();
+    }
+  }, [dragState.isDragging, endDrag]);
+
+  // Handle mouse leave to cancel drag
+  const handleDragMouseLeave = useCallback(() => {
+    if (dragState.isDragging) {
+      cancelDrag();
+    }
+  }, [dragState.isDragging, cancelDrag]);
+
+  // Specific drag handlers for each element type
+  const handleJunctionDragStart = useCallback(
+    (id: string, position: { x: number; y: number }, e: React.MouseEvent) => {
+      handleDragStart('junction', id, position, e);
+    },
+    [handleDragStart]
+  );
+
+  const handleSignageDragStart = useCallback(
+    (id: string, position: { x: number; y: number }, e: React.MouseEvent) => {
+      handleDragStart('signage', id, position, e);
+    },
+    [handleDragStart]
+  );
+
+  const handleFurnitureDragStart = useCallback(
+    (id: string, position: { x: number; y: number }, e: React.MouseEvent) => {
+      handleDragStart('furniture', id, position, e);
+    },
+    [handleDragStart]
+  );
+
+  const handleProductDragStart = useCallback(
+    (id: string, position: { x: number; y: number }, e: React.MouseEvent) => {
+      handleDragStart('product', id, position, e);
+    },
+    [handleDragStart]
+  );
+
   // Handle canvas click for selection (when in select mode)
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<SVGElement>) => {
@@ -666,7 +765,14 @@ export default function CustomCanvasView() {
   ];
 
   return (
-    <div ref={containerRef} className="relative w-full h-full">
+    <div
+      ref={containerRef}
+      className="relative w-full h-full"
+      onMouseMove={handleDragMouseMove}
+      onMouseUp={handleDragMouseUp}
+      onMouseLeave={handleDragMouseLeave}
+      style={{ cursor: dragState.isDragging ? 'grabbing' : undefined }}
+    >
       {/* Canvas Toolbar */}
       <div className="absolute top-4 left-4 z-10 flex flex-col gap-1 bg-white rounded-lg shadow-lg p-1">
         {tools.map((tool) => (
@@ -1017,6 +1123,7 @@ export default function CustomCanvasView() {
           hoveredJunctionId={hoveredJunctionId}
           onSelectJunction={handleSelectJunction}
           onHoverJunction={setHoveredJunctionId}
+          onDragStart={handleJunctionDragStart}
         />
 
         {/* Junction placer (when junction tool is active) */}
@@ -1064,6 +1171,7 @@ export default function CustomCanvasView() {
           hoveredSignId={hoveredSignId}
           onSelectSign={handleSelectSign}
           onHoverSign={setHoveredSignId}
+          onDragStart={handleSignageDragStart}
         />
 
         {/* Signage placer (when signage tool is active) */}
@@ -1086,6 +1194,7 @@ export default function CustomCanvasView() {
           hoveredFurnitureId={hoveredFurnitureId}
           onSelectFurniture={handleSelectFurniture}
           onHoverFurniture={setHoveredFurnitureId}
+          onDragStart={handleFurnitureDragStart}
         />
 
         {/* Furniture placer (when furniture tool is active) */}
@@ -1106,6 +1215,7 @@ export default function CustomCanvasView() {
           viewport={viewport}
           selectedIds={selectedProductIds}
           onSelect={handleSelectProduct}
+          onDragStart={handleProductDragStart}
         />
 
         {/* Product placer (when product tool is active) */}

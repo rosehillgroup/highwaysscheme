@@ -10,6 +10,7 @@ interface CanvasProductRendererProps {
   viewport: CanvasViewport;
   isSelected?: boolean;
   onClick?: (e: React.MouseEvent) => void;
+  onDragStart?: (id: string, position: { x: number; y: number }, e: React.MouseEvent) => void;
 }
 
 // Get product definition from data
@@ -32,6 +33,7 @@ const CanvasProductRenderer = memo(function CanvasProductRenderer({
   viewport,
   isSelected = false,
   onClick,
+  onDragStart,
 }: CanvasProductRendererProps) {
   const pixelsPerMetre = 100 * viewport.zoom;
   const definition = getProductDefinition(product.productId);
@@ -81,6 +83,15 @@ const CanvasProductRenderer = memo(function CanvasProductRenderer({
     return { x: 0, y: 0 };
   }, [product.position]);
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only start drag if already selected and left mouse button
+    if (isSelected && e.button === 0 && onDragStart) {
+      e.stopPropagation();
+      e.preventDefault();
+      onDragStart(product.id, position, e);
+    }
+  };
+
   const transform = `
     translate(${-viewport.pan.x * pixelsPerMetre}, ${-viewport.pan.y * pixelsPerMetre})
     scale(${pixelsPerMetre})
@@ -103,7 +114,8 @@ const CanvasProductRenderer = memo(function CanvasProductRenderer({
       className="canvas-product"
       transform={transform}
       onClick={onClick}
-      style={{ cursor: onClick ? 'pointer' : 'default' }}
+      onMouseDown={handleMouseDown}
+      style={{ cursor: isSelected ? 'grab' : onClick ? 'pointer' : 'default' }}
     >
       <g transform={`translate(${position.x}, ${position.y}) rotate(${product.rotation})`}>
         {/* Selection highlight */}
@@ -178,6 +190,7 @@ interface ProductLayerProps {
   viewport: CanvasViewport;
   selectedIds: string[];
   onSelect?: (id: string) => void;
+  onDragStart?: (id: string, position: { x: number; y: number }, e: React.MouseEvent) => void;
 }
 
 /**
@@ -188,6 +201,7 @@ export const ProductLayer = memo(function ProductLayer({
   viewport,
   selectedIds,
   onSelect,
+  onDragStart,
 }: ProductLayerProps) {
   const productList = Object.values(products);
 
@@ -205,6 +219,7 @@ export const ProductLayer = memo(function ProductLayer({
             e.stopPropagation();
             onSelect(product.id);
           } : undefined}
+          onDragStart={onDragStart}
         />
       ))}
     </g>
