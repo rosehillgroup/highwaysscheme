@@ -201,8 +201,8 @@ export class SketchScene extends Phaser.Scene {
     this.productLayer = this.add.container(0, 0);
     this.uiLayer = this.add.container(0, 0);
 
-    // Set up camera with sky gradient background
-    this.cameras.main.setBackgroundColor(0x87ceeb); // Light sky blue
+    // Set up camera with grass background
+    this.cameras.main.setBackgroundColor(0x4a7c23); // Grass green
 
     // Set up input
     this.input.on('pointerdown', this.handlePointerDown, this);
