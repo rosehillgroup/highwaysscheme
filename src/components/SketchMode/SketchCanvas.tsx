@@ -19,9 +19,11 @@ import type { Product } from '@/types';
 
 interface SketchCanvasProps {
   className?: string;
+  placementMode?: { productId: string; isRun?: boolean } | null;
+  onPlacementComplete?: () => void;
 }
 
-export function SketchCanvas({ className }: SketchCanvasProps) {
+export function SketchCanvas({ className, placementMode, onPlacementComplete }: SketchCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   const sceneRef = useRef<SketchScene | null>(null);
@@ -32,6 +34,7 @@ export function SketchCanvas({ className }: SketchCanvasProps) {
   const selectedElementId = useSchemeStore((state) => state.selectedElementId);
   const selectElement = useSchemeStore((state) => state.selectElement);
   const updateElement = useSchemeStore((state) => state.updateElement);
+  const addElement = useSchemeStore((state) => state.addElement);
 
   // Sketch store
   const scale = useSketchStore((state) => state.scale);
@@ -79,10 +82,22 @@ export function SketchCanvas({ className }: SketchCanvasProps) {
 
   const handleBackgroundClick = useCallback(
     (s: number, t: number) => {
-      // Could be used to place new products in the future
-      console.log('Background clicked at chainage:', s, 'offset:', t);
+      // Place product if in placement mode
+      if (placementMode && !placementMode.isRun) {
+        const product = productList.find((p) => p.id === placementMode.productId);
+        if (product) {
+          // Linear products use 'run' type, otherwise 'discrete'
+          const type = product.type === 'linear' ? 'run' : 'discrete';
+          addElement(
+            placementMode.productId,
+            { s, t, rotation: 0 },
+            type
+          );
+          onPlacementComplete?.();
+        }
+      }
     },
-    []
+    [placementMode, productList, addElement, onPlacementComplete]
   );
 
   // ======================================================================
@@ -139,6 +154,7 @@ export function SketchCanvas({ className }: SketchCanvasProps) {
           selectedElementId,
           hoveredElementId: hoveredProductId,
           snapToGrid,
+          placementMode,
         },
         {
           onElementSelect: handleElementSelect,
@@ -176,6 +192,7 @@ export function SketchCanvas({ className }: SketchCanvasProps) {
         selectedElementId,
         hoveredElementId: hoveredProductId,
         snapToGrid,
+        placementMode,
       },
       {
         onElementSelect: handleElementSelect,
@@ -196,6 +213,7 @@ export function SketchCanvas({ className }: SketchCanvasProps) {
     selectedElementId,
     hoveredProductId,
     snapToGrid,
+    placementMode,
     handleElementSelect,
     handleElementHover,
     handleElementMove,

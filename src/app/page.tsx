@@ -267,8 +267,8 @@ export default function Home() {
           </div>
         )}
 
-        {/* Placement mode indicator - map mode only */}
-        {isMapMode && placementMode && (
+        {/* Placement mode indicator - map and sketch modes */}
+        {(isMapMode || isSketchMode) && placementMode && (
           <div className={`flex items-center gap-2 px-3 py-1 rounded-full ${
             placementMode.isRun ? 'bg-purple-100' : 'bg-[#FFF0EB]'
           }`}>
@@ -320,7 +320,19 @@ export default function Home() {
             <div className="flex flex-col h-full">
               <SketchToolbar />
               <div className="flex-1 relative">
-                <SketchCanvas className="w-full h-full" />
+                <SketchCanvas
+                  className="w-full h-full"
+                  placementMode={placementMode}
+                  onPlacementComplete={handlePlacementComplete}
+                />
+                {/* Placement mode instructions */}
+                {placementMode && !placementMode.isRun && corridor && (
+                  <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 bg-[#FF6B35] text-white px-4 py-2 rounded-lg shadow-lg">
+                    <p className="text-sm">
+                      Click on the corridor to place product • <kbd className="px-1 bg-[#E55A2B] rounded">Esc</kbd> to cancel
+                    </p>
+                  </div>
+                )}
                 {/* Empty state if no corridor */}
                 {!corridor && (
                   <div className="absolute inset-0 flex items-center justify-center bg-slate-50">
