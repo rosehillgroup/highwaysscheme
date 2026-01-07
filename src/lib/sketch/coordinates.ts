@@ -10,11 +10,13 @@
 // ============================================================================
 
 // Tile dimensions for 2:1 isometric projection
-export const TILE_WIDTH = 64; // pixels
-export const TILE_HEIGHT = 32; // pixels
+// Smaller tiles = more compact view
+export const TILE_WIDTH = 8; // pixels per grid unit
+export const TILE_HEIGHT = 4; // pixels per grid unit
 
 // Default scale: metres per grid unit
-export const DEFAULT_SCALE = 10;
+// Higher scale = more metres fit in view
+export const DEFAULT_SCALE = 5;
 
 // ============================================================================
 // Types

@@ -71,6 +71,12 @@ export class SketchScene extends Phaser.Scene {
   private draggedElement: string | null = null;
   private dragOffset: { x: number; y: number } = { x: 0, y: 0 };
 
+  // Camera panning state
+  private isPanning: boolean = false;
+  private panStart: { x: number; y: number } = { x: 0, y: 0 };
+  private cameraStart: { x: number; y: number } = { x: 0, y: 0 };
+  private hasInitializedCamera: boolean = false;
+
   constructor() {
     super({ key: 'SketchScene' });
   }
@@ -158,14 +164,30 @@ export class SketchScene extends Phaser.Scene {
   // ======================================================================
 
   private updateCamera(): void {
-    if (!this.config) return;
+    if (!this.config || !this.isoConfig) return;
 
     const camera = this.cameras.main;
     camera.setZoom(this.config.zoom);
-    camera.setScroll(
-      this.config.cameraOffset.x - this.scale.width / 2,
-      this.config.cameraOffset.y - this.scale.height / 2
-    );
+
+    // On first load, center the camera on the corridor
+    if (!this.hasInitializedCamera && this.config.corridor) {
+      const corridor = this.config.corridor;
+      const midS = corridor.totalLength / 2;
+      const midT = 0;
+
+      // Get screen position of corridor center
+      const centerPos = chainageToScreen(midS, midT, this.isoConfig);
+
+      // Center the camera on the corridor
+      camera.centerOn(centerPos.x, centerPos.y);
+      this.hasInitializedCamera = true;
+    } else if (this.config.cameraOffset.x !== 0 || this.config.cameraOffset.y !== 0) {
+      // Use manual camera offset if set
+      camera.setScroll(
+        this.config.cameraOffset.x - this.scale.width / 2,
+        this.config.cameraOffset.y - this.scale.height / 2
+      );
+    }
   }
 
   private renderGround(): void {
@@ -335,10 +357,16 @@ export class SketchScene extends Phaser.Scene {
       this.isoConfig.scale
     );
 
-    // Calculate isometric dimensions
-    const width = Math.max(32, spriteConfig.gridWidth * TILE_WIDTH);
-    const height = Math.max(16, spriteConfig.gridLength * TILE_HEIGHT);
-    const depth = spriteConfig.heightPixels;
+    // Calculate isometric dimensions - use actual product dimensions
+    // Products are in mm, convert to metres then to pixels
+    const productLengthM = product.dimensions.length / 1000;
+    const productWidthM = product.dimensions.width / 1000;
+
+    // Calculate pixel size based on scale (metres per grid unit) and tile size
+    const pixelsPerMetre = TILE_WIDTH / this.isoConfig.scale;
+    const width = Math.max(12, productLengthM * pixelsPerMetre);
+    const height = Math.max(6, productWidthM * pixelsPerMetre * 0.5); // Half for isometric
+    const depth = Math.min(20, Math.max(4, spriteConfig.heightPixels));
 
     // Draw isometric box
     const graphics = this.add.graphics();
@@ -515,23 +543,19 @@ export class SketchScene extends Phaser.Scene {
         y: pointer.worldY - hitContainer.y,
       };
     } else {
-      // Background click
+      // Background click - start panning
       this.sceneEvents.onElementSelect(null);
-
-      // Convert to chainage coordinates
-      const chainage = screenToChainage(
-        pointer.worldX,
-        pointer.worldY,
-        this.isoConfig
-      );
-      this.sceneEvents.onBackgroundClick(chainage.s, chainage.t);
+      this.isPanning = true;
+      this.panStart = { x: pointer.x, y: pointer.y };
+      const camera = this.cameras.main;
+      this.cameraStart = { x: camera.scrollX, y: camera.scrollY };
     }
   }
 
   private handlePointerMove(pointer: Phaser.Input.Pointer): void {
     if (!this.sceneEvents || !this.isoConfig) return;
 
-    // Handle drag
+    // Handle product drag
     if (this.draggedElement && pointer.isDown) {
       const newX = pointer.worldX - this.dragOffset.x;
       const newY = pointer.worldY - this.dragOffset.y;
@@ -543,6 +567,15 @@ export class SketchScene extends Phaser.Scene {
         : chainage;
 
       this.sceneEvents.onElementMove(this.draggedElement, snapped.s, snapped.t);
+      return;
+    }
+
+    // Handle camera panning
+    if (this.isPanning && pointer.isDown) {
+      const camera = this.cameras.main;
+      const dx = (this.panStart.x - pointer.x) / camera.zoom;
+      const dy = (this.panStart.y - pointer.y) / camera.zoom;
+      camera.setScroll(this.cameraStart.x + dx, this.cameraStart.y + dy);
       return;
     }
 
@@ -562,6 +595,7 @@ export class SketchScene extends Phaser.Scene {
   private handlePointerUp(): void {
     this.draggedElement = null;
     this.dragOffset = { x: 0, y: 0 };
+    this.isPanning = false;
   }
 
   private handleWheel(

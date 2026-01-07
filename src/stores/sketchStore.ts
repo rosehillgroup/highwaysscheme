@@ -75,7 +75,7 @@ export type SketchStore = SketchViewState & SketchViewActions;
 
 const initialState: SketchViewState = {
   isSketchMode: false,
-  scale: 10, // 10 metres per grid unit
+  scale: 5, // 5 metres per grid unit (matches DEFAULT_SCALE in coordinates.ts)
   zoom: 1.0,
   cameraOffset: { x: 0, y: 0 },
   selectedProductId: null,
