@@ -16,6 +16,7 @@ interface RoadRendererProps {
   isHovered: boolean;
   onSelect?: (id: string) => void;
   onHover?: (id: string | null) => void;
+  onDragStart?: (id: string, position: { x: number; y: number }, e: React.MouseEvent) => void;
 }
 
 /**
@@ -36,6 +37,7 @@ const RoadRenderer = memo(function RoadRenderer({
   isHovered,
   onSelect,
   onHover,
+  onDragStart,
 }: RoadRendererProps) {
   const pixelsPerMetre = 100 * viewport.zoom;
 
@@ -101,20 +103,30 @@ const RoadRenderer = memo(function RoadRenderer({
     }
 
     // Lane dividers (if multiple lanes)
+    // For multi-lane roads, draw dividers between lanes
+    // For 2-lane roads (typical bidirectional), draw center line
+    // For 1-lane roads, no center line needed
     const laneDividerPaths: string[] = [];
-    if (road.lanes && road.lanes.count > 1) {
-      const totalWidth = road.width;
-      const laneWidth = totalWidth / road.lanes.count;
+    const laneCount = road.lanes?.count ?? 1;
 
-      for (let i = 1; i < road.lanes.count; i++) {
+    if (laneCount > 1) {
+      const totalWidth = road.width;
+      const laneWidth = totalWidth / laneCount;
+
+      // Draw dividers between lanes (not at edges)
+      for (let i = 1; i < laneCount; i++) {
         const offset = -totalWidth / 2 + laneWidth * i;
         const dividerPoints = generateOffsetCurve(road.points, offset);
         laneDividerPaths.push(offsetCurveToSvgPath(dividerPoints));
       }
     }
 
+    // Only include center path for rendering if we have multiple lanes
+    // (center line only makes sense for 2-lane bidirectional roads)
+    const showCenterLine = laneCount >= 2;
+
     return {
-      centerPath,
+      centerPath: showCenterLine ? centerPath : null,
       surfacePath,
       leftEdgePath,
       rightEdgePath,
@@ -134,6 +146,20 @@ const RoadRenderer = memo(function RoadRenderer({
     onSelect?.(road.id);
   };
 
+  const handleMouseDown = (e: React.MouseEvent) => {
+    // Only start drag on selected roads with left mouse button
+    if (!isSelected || e.button !== 0) return;
+
+    e.stopPropagation();
+    e.preventDefault();
+
+    // Use the first point as the reference position for drag
+    const firstPoint = road.points[0]?.point;
+    if (firstPoint && onDragStart) {
+      onDragStart(road.id, firstPoint, e);
+    }
+  };
+
   const handleMouseEnter = () => {
     onHover?.(road.id);
   };
@@ -147,9 +173,10 @@ const RoadRenderer = memo(function RoadRenderer({
       className="road-segment"
       transform={transform}
       onClick={handleClick}
+      onMouseDown={handleMouseDown}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: isSelected ? 'grab' : 'pointer' }}
     >
       {/* Selection highlight (behind everything) */}
       {isSelected && (
@@ -206,31 +233,22 @@ const RoadRenderer = memo(function RoadRenderer({
         strokeWidth={0.1}
       />
 
-      {/* Centre line (dashed white) */}
-      <path
-        d={paths.centerPath}
-        fill="none"
-        stroke="#ffffff"
-        strokeWidth={0.1}
-        strokeDasharray="0.5 0.3"
-      />
-
-      {/* Lane dividers */}
+      {/* Lane dividers (includes center line for 2+ lane roads) */}
       {paths.laneDividerPaths.map((path, i) => (
         <path
           key={`lane-divider-${i}`}
           d={path}
           fill="none"
           stroke="#ffffff"
-          strokeWidth={0.08}
-          strokeDasharray="0.4 0.4"
+          strokeWidth={0.1}
+          strokeDasharray="0.5 0.3"
         />
       ))}
 
-      {/* Selection outline */}
+      {/* Selection outline - use center path or fall back to generating one */}
       {isSelected && (
         <path
-          d={paths.centerPath}
+          d={paths.centerPath || roadToSvgPath(road.points)}
           fill="none"
           stroke="#FF6B35"
           strokeWidth={0.15}
@@ -241,7 +259,7 @@ const RoadRenderer = memo(function RoadRenderer({
       {/* Hover highlight */}
       {isHovered && !isSelected && (
         <path
-          d={paths.centerPath}
+          d={paths.centerPath || roadToSvgPath(road.points)}
           fill="none"
           stroke="#FF6B35"
           strokeWidth={0.1}
@@ -267,6 +285,7 @@ interface RoadsLayerProps {
   hoveredRoadId: string | null;
   onSelectRoad?: (id: string | null) => void;
   onHoverRoad?: (id: string | null) => void;
+  onDragStart?: (id: string, position: { x: number; y: number }, e: React.MouseEvent) => void;
 }
 
 export const RoadsLayer = memo(function RoadsLayer({
@@ -277,6 +296,7 @@ export const RoadsLayer = memo(function RoadsLayer({
   hoveredRoadId,
   onSelectRoad,
   onHoverRoad,
+  onDragStart,
 }: RoadsLayerProps) {
   return (
     <g className="roads-layer">
@@ -293,6 +313,7 @@ export const RoadsLayer = memo(function RoadsLayer({
             isHovered={hoveredRoadId === road.id}
             onSelect={onSelectRoad}
             onHover={onHoverRoad}
+            onDragStart={onDragStart}
           />
         );
       })}

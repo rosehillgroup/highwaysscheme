@@ -225,6 +225,54 @@ function RoadProperties({ road, onUpdate, onDelete, onClose }: RoadPropertiesPro
     });
   };
 
+  const handleLengthChange = (newLength: number) => {
+    const currentLength = road.length ?? 0;
+    if (currentLength <= 0 || newLength <= 0) return;
+
+    // Scale factor for adjusting the road
+    const scaleFactor = newLength / currentLength;
+
+    // Scale the control points to achieve the new length
+    // We keep the first point fixed and scale all others relative to it
+    const firstPoint = road.points[0];
+    const scaledPoints = road.points.map((point, index) => {
+      if (index === 0) return point;
+
+      // Scale the distance from first point
+      const dx = point.point.x - firstPoint.point.x;
+      const dy = point.point.y - firstPoint.point.y;
+
+      const newPoint = {
+        x: firstPoint.point.x + dx * scaleFactor,
+        y: firstPoint.point.y + dy * scaleFactor,
+      };
+
+      // Scale control handles proportionally
+      const handleInDx = point.handleIn ? (point.handleIn.x - point.point.x) : 0;
+      const handleInDy = point.handleIn ? (point.handleIn.y - point.point.y) : 0;
+      const handleOutDx = point.handleOut ? (point.handleOut.x - point.point.x) : 0;
+      const handleOutDy = point.handleOut ? (point.handleOut.y - point.point.y) : 0;
+
+      return {
+        ...point,
+        point: newPoint,
+        handleIn: point.handleIn ? {
+          x: newPoint.x + handleInDx * scaleFactor,
+          y: newPoint.y + handleInDy * scaleFactor,
+        } : undefined,
+        handleOut: point.handleOut ? {
+          x: newPoint.x + handleOutDx * scaleFactor,
+          y: newPoint.y + handleOutDy * scaleFactor,
+        } : undefined,
+      };
+    });
+
+    onUpdate({
+      points: scaledPoints,
+      length: newLength,
+    });
+  };
+
   const handleCycleLaneToggle = () => {
     if (road.cycleLane?.enabled) {
       onUpdate({ cycleLane: { ...road.cycleLane, enabled: false } });
@@ -271,15 +319,41 @@ function RoadProperties({ road, onUpdate, onDelete, onClose }: RoadPropertiesPro
             {road.points.length} points
           </span>
         </div>
-        {roadLength > 0 && (
-          <p className="text-xs text-slate-500 mt-1">
-            Length: {roadLength.toFixed(1)} m
-          </p>
-        )}
       </div>
 
       {/* Content */}
       <div className="p-4 space-y-4 flex-1 overflow-y-auto">
+        {/* Road Length */}
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">
+            Road Length (m)
+          </label>
+          <input
+            type="number"
+            value={roadLength.toFixed(1)}
+            onChange={(e) => handleLengthChange(parseFloat(e.target.value) || roadLength)}
+            min={5}
+            max={1000}
+            step={5}
+            className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF6B35]"
+          />
+          <div className="flex gap-1 mt-2">
+            {[25, 50, 100, 200].map((l) => (
+              <button
+                key={l}
+                onClick={() => handleLengthChange(l)}
+                className={`flex-1 px-2 py-1 text-xs rounded transition-colors ${
+                  Math.abs(roadLength - l) < 1
+                    ? 'bg-[#FF6B35] text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {l}m
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Carriageway Width */}
         <div>
           <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">

@@ -596,6 +596,13 @@ export default function CustomCanvasView() {
     [handleDragStart]
   );
 
+  const handleRoadDragStart = useCallback(
+    (id: string, position: { x: number; y: number }, e: React.MouseEvent) => {
+      handleDragStart('road', id, position, e);
+    },
+    [handleDragStart]
+  );
+
   // Handle canvas click for selection (when in select mode)
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<SVGElement>) => {
@@ -1100,6 +1107,7 @@ export default function CustomCanvasView() {
           hoveredRoadId={hoveredRoadId}
           onSelectRoad={handleSelectRoad}
           onHoverRoad={setHoveredRoadId}
+          onDragStart={handleRoadDragStart}
         />
 
         {/* Road drawer (when road tool is active) */}

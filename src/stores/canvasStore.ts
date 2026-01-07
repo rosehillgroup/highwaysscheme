@@ -82,10 +82,12 @@ export interface CanvasExportData {
 // Drag state for element movement
 export interface DragState {
   isDragging: boolean;
-  elementType: 'junction' | 'signage' | 'furniture' | 'product' | null;
+  elementType: 'road' | 'junction' | 'signage' | 'furniture' | 'product' | null;
   elementId: string | null;
   startPosition: CanvasPoint | null;
   startMouseCanvas: CanvasPoint | null;
+  // For road dragging, store original control points
+  originalRoadPoints?: BezierControlPoint[];
 }
 
 interface CanvasActions {
@@ -292,6 +294,23 @@ export const useCanvasStore = create<CanvasStore>()(
         startPosition: CanvasPoint,
         mouseCanvasPos: CanvasPoint
       ) => {
+        const state = get();
+
+        // For road dragging, store original control points
+        let originalRoadPoints: BezierControlPoint[] | undefined;
+        if (elementType === 'road') {
+          const road = state.roads[elementId];
+          if (road) {
+            // Deep copy the points
+            originalRoadPoints = road.points.map((p) => ({
+              ...p,
+              point: { ...p.point },
+              handleIn: p.handleIn ? { ...p.handleIn } : undefined,
+              handleOut: p.handleOut ? { ...p.handleOut } : undefined,
+            }));
+          }
+        }
+
         set({
           dragState: {
             isDragging: true,
@@ -299,6 +318,7 @@ export const useCanvasStore = create<CanvasStore>()(
             elementId,
             startPosition,
             startMouseCanvas: mouseCanvasPos,
+            originalRoadPoints,
           },
         });
       },
@@ -334,7 +354,39 @@ export const useCanvasStore = create<CanvasStore>()(
         const newPosition = { x: newX, y: newY };
 
         // Update the appropriate element (without pushing to history during drag)
-        if (dragState.elementType === 'junction') {
+        if (dragState.elementType === 'road') {
+          const road = state.roads[dragState.elementId];
+          const originalPoints = dragState.originalRoadPoints;
+          if (road && originalPoints) {
+            // Move all control points by the delta
+            const movedPoints = originalPoints.map((p) => ({
+              ...p,
+              point: {
+                x: p.point.x + deltaX,
+                y: p.point.y + deltaY,
+              },
+              handleIn: p.handleIn
+                ? {
+                    x: p.handleIn.x + deltaX,
+                    y: p.handleIn.y + deltaY,
+                  }
+                : undefined,
+              handleOut: p.handleOut
+                ? {
+                    x: p.handleOut.x + deltaX,
+                    y: p.handleOut.y + deltaY,
+                  }
+                : undefined,
+            }));
+
+            set((s) => ({
+              roads: {
+                ...s.roads,
+                [dragState.elementId!]: { ...road, points: movedPoints },
+              },
+            }));
+          }
+        } else if (dragState.elementType === 'junction') {
           const junction = state.junctions[dragState.elementId];
           if (junction) {
             set((s) => ({
@@ -401,13 +453,24 @@ export const useCanvasStore = create<CanvasStore>()(
         // Restore original position if we were dragging
         if (
           dragState.isDragging &&
-          dragState.startPosition &&
           dragState.elementId &&
           dragState.elementType
         ) {
           const originalPosition = dragState.startPosition;
 
-          if (dragState.elementType === 'junction') {
+          if (dragState.elementType === 'road') {
+            // Restore original road points
+            const road = state.roads[dragState.elementId];
+            const originalPoints = dragState.originalRoadPoints;
+            if (road && originalPoints) {
+              set((s) => ({
+                roads: {
+                  ...s.roads,
+                  [dragState.elementId!]: { ...road, points: originalPoints },
+                },
+              }));
+            }
+          } else if (dragState.elementType === 'junction' && originalPosition) {
             const junction = state.junctions[dragState.elementId];
             if (junction) {
               set((s) => ({
@@ -417,7 +480,7 @@ export const useCanvasStore = create<CanvasStore>()(
                 },
               }));
             }
-          } else if (dragState.elementType === 'signage') {
+          } else if (dragState.elementType === 'signage' && originalPosition) {
             const sign = state.signage[dragState.elementId];
             if (sign) {
               set((s) => ({
@@ -427,7 +490,7 @@ export const useCanvasStore = create<CanvasStore>()(
                 },
               }));
             }
-          } else if (dragState.elementType === 'furniture') {
+          } else if (dragState.elementType === 'furniture' && originalPosition) {
             const item = state.furniture[dragState.elementId];
             if (item) {
               set((s) => ({
@@ -437,7 +500,7 @@ export const useCanvasStore = create<CanvasStore>()(
                 },
               }));
             }
-          } else if (dragState.elementType === 'product') {
+          } else if (dragState.elementType === 'product' && originalPosition) {
             const product = state.products[dragState.elementId];
             if (product) {
               set((s) => ({
