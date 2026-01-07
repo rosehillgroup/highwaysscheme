@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, memo } from 'react';
 import { useSchemeStore } from '@/stores/schemeStore';
+import { useCanvasStore } from '@/stores/canvasStore';
 import productsData from '@/data/products.json';
 import type { Product, ProductCategory } from '@/types';
 
@@ -81,7 +82,14 @@ export default function ProductLibrary({
   );
 
   const corridor = useSchemeStore((state) => state.corridor);
-  const isCarriagewayConfirmed = corridor?.carriageway.confirmed ?? false;
+  const canvasRoadOrder = useCanvasStore((state) => state.roadOrder);
+
+  // User can place products if either:
+  // 1. Map mode: corridor carriageway is confirmed
+  // 2. Canvas mode: at least one road is drawn
+  const hasMapCorridor = corridor?.carriageway.confirmed ?? false;
+  const hasCanvasRoads = canvasRoadOrder.length > 0;
+  const isReadyForPlacement = hasMapCorridor || hasCanvasRoads;
 
   // Group products by category
   const groupedProducts = useMemo(() => {
@@ -120,7 +128,7 @@ export default function ProductLibrary({
   };
 
   const handleProductClick = (product: Product) => {
-    if (!isCarriagewayConfirmed) return;
+    if (!isReadyForPlacement) return;
     onSelectProduct?.(product);
   };
 
@@ -163,10 +171,10 @@ export default function ProductLibrary({
       </div>
 
       {/* Status Messages */}
-      {!isCarriagewayConfirmed && (
+      {!isReadyForPlacement && (
         <div className="mx-4 mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
           <p className="text-xs text-amber-800">
-            <strong>Setup required:</strong> Draw a corridor and confirm carriageway width to place products.
+            <strong>Setup required:</strong> Draw a road on the Canvas tab, or select a corridor on the Map tab and confirm its width.
           </p>
         </div>
       )}
@@ -222,7 +230,7 @@ export default function ProductLibrary({
                       key={product.id}
                       product={product}
                       onClick={() => handleProductClick(product)}
-                      disabled={!isCarriagewayConfirmed}
+                      disabled={!isReadyForPlacement}
                       selected={product.id === selectedProductId}
                     />
                   ))}
