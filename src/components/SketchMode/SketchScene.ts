@@ -71,6 +71,14 @@ const ASSETS = {
   TREE_2: 'tree-2',
   TREE_3: 'tree-3',
   TREE_4: 'tree-4',
+  // Buildings
+  BUILDING_TOWNHOUSE: 'building-townhouse',
+  BUILDING_LIMESTONE: 'building-limestone',
+  BUILDING_ROMANESQUE_2: 'building-romanesque-2',
+  BUILDING_ROMANESQUE_3: 'building-romanesque-3',
+  BUILDING_APARTMENTS: 'building-apartments',
+  BUILDING_BROWNSTONE: 'building-brownstone',
+  BUILDING_VICTORIAN: 'building-victorian',
 } as const;
 
 // Tree types for variety
@@ -87,6 +95,17 @@ const TREE_TYPES = [
 const CAR_TYPES_FORWARD = [ASSETS.CAR_JEEP_E, ASSETS.CAR_TAXI_E];
 const CAR_TYPES_BACKWARD = [ASSETS.CAR_JEEP_W, ASSETS.CAR_TAXI_W];
 
+// Building types for variety
+const BUILDING_TYPES = [
+  ASSETS.BUILDING_TOWNHOUSE,
+  ASSETS.BUILDING_LIMESTONE,
+  ASSETS.BUILDING_ROMANESQUE_2,
+  ASSETS.BUILDING_ROMANESQUE_3,
+  ASSETS.BUILDING_APARTMENTS,
+  ASSETS.BUILDING_BROWNSTONE,
+  ASSETS.BUILDING_VICTORIAN,
+];
+
 export class SketchScene extends Phaser.Scene {
   private config: SketchSceneConfig | null = null;
   private sceneEvents: SketchSceneEvents | null = null;
@@ -95,6 +114,7 @@ export class SketchScene extends Phaser.Scene {
   // Graphics layers
   private backgroundLayer: Phaser.GameObjects.Container | null = null;
   private groundLayer: Phaser.GameObjects.Container | null = null;
+  private buildingLayer: Phaser.GameObjects.Container | null = null;
   private sceneryLayer: Phaser.GameObjects.Container | null = null;
   private trafficLayer: Phaser.GameObjects.Container | null = null;
   private gridLayer: Phaser.GameObjects.Container | null = null;
@@ -106,6 +126,7 @@ export class SketchScene extends Phaser.Scene {
   private productSprites: Map<string, Phaser.GameObjects.Container> = new Map();
   private treeSprites: Phaser.GameObjects.Sprite[] = [];
   private carSprites: Phaser.GameObjects.Sprite[] = [];
+  private buildingSprites: Phaser.GameObjects.Sprite[] = [];
 
   // Interaction state
   private draggedElement: string | null = null;
@@ -144,6 +165,15 @@ export class SketchScene extends Phaser.Scene {
     this.load.image(ASSETS.TREE_3, '/sketch-assets/props/1x1tree3.png');
     this.load.image(ASSETS.TREE_4, '/sketch-assets/props/1x1tree4.png');
 
+    // Load building sprites
+    this.load.image(ASSETS.BUILDING_TOWNHOUSE, '/sketch-assets/buildings/2x2english_townhouse_south.png');
+    this.load.image(ASSETS.BUILDING_LIMESTONE, '/sketch-assets/buildings/2x2limestone_south.png');
+    this.load.image(ASSETS.BUILDING_ROMANESQUE_2, '/sketch-assets/buildings/2x2romanesque_2_south.png');
+    this.load.image(ASSETS.BUILDING_ROMANESQUE_3, '/sketch-assets/buildings/2x2romanesque_3_south.png');
+    this.load.image(ASSETS.BUILDING_APARTMENTS, '/sketch-assets/buildings/2x2yellow_apartments_south.png');
+    this.load.image(ASSETS.BUILDING_BROWNSTONE, '/sketch-assets/buildings/2x3brownstone_south.png');
+    this.load.image(ASSETS.BUILDING_VICTORIAN, '/sketch-assets/buildings/2x3sf_victorian_south.png');
+
     this.load.on('complete', () => {
       this.assetsLoaded = true;
     });
@@ -154,9 +184,10 @@ export class SketchScene extends Phaser.Scene {
   // ======================================================================
 
   create(): void {
-    // Create layers (render order: background -> ground -> scenery -> traffic -> grid -> products -> UI)
+    // Create layers (render order: background -> ground -> buildings -> scenery -> traffic -> grid -> products -> UI)
     this.backgroundLayer = this.add.container(0, 0);
     this.groundLayer = this.add.container(0, 0);
+    this.buildingLayer = this.add.container(0, 0);
     this.sceneryLayer = this.add.container(0, 0);
     this.trafficLayer = this.add.container(0, 0);
     this.gridLayer = this.add.container(0, 0);
@@ -229,6 +260,7 @@ export class SketchScene extends Phaser.Scene {
 
     // Render layers
     this.renderGround();
+    this.renderBuildings();
     this.renderScenery();
     this.renderGrid();
     this.renderProducts();
@@ -427,6 +459,73 @@ export class SketchScene extends Phaser.Scene {
     graphics.lineBetween(rightKerbStart.x, rightKerbStart.y, rightKerbEnd.x, rightKerbEnd.y);
 
     this.groundLayer.add(graphics);
+  }
+
+  /**
+   * Render buildings behind the trees on both sides of the road
+   */
+  private renderBuildings(): void {
+    if (!this.buildingLayer || !this.config?.corridor || !this.isoConfig || !this.assetsLoaded) return;
+
+    // Clear existing buildings
+    this.buildingSprites.forEach((building) => building.destroy());
+    this.buildingSprites = [];
+
+    const { corridor } = this.config;
+    const totalLength = corridor.totalLength;
+    const carriageWidth = corridor.carriageway.width;
+    const vergeWidth = 5;
+
+    // Building spacing (every 20-30m with variety)
+    const baseSpacing = 25;
+    // Position buildings behind trees (trees are at edge of verge + 2m)
+    const buildingOffset = carriageWidth / 2 + vergeWidth + 8; // Further back than trees
+
+    // Use seeded random for consistent placement
+    let seed = 12345;
+    const seededRandom = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+
+    // Place buildings on both sides
+    for (let s = 5; s < totalLength - 5; s += baseSpacing + (seededRandom() * 10 - 5)) {
+      // Left side building
+      const leftT = -buildingOffset - (seededRandom() * 2);
+      this.placeBuilding(s, leftT, seededRandom);
+
+      // Right side building (offset for staggered look)
+      const rightT = buildingOffset + (seededRandom() * 2);
+      this.placeBuilding(s + baseSpacing / 2, rightT, seededRandom);
+    }
+  }
+
+  /**
+   * Place a single building at the given chainage position
+   */
+  private placeBuilding(s: number, t: number, random: () => number): void {
+    if (!this.buildingLayer || !this.isoConfig) return;
+
+    // Pick a random building type
+    const buildingType = BUILDING_TYPES[Math.floor(random() * BUILDING_TYPES.length)];
+
+    // Check if texture exists
+    if (!this.textures.exists(buildingType)) return;
+
+    const pos = chainageToScreen(s, t, this.isoConfig);
+    const building = this.add.sprite(pos.x, pos.y, buildingType);
+
+    // Scale buildings - slightly larger than trees for background presence
+    building.setScale(0.22 + random() * 0.05);
+
+    // Set origin at bottom center for proper ground positioning
+    building.setOrigin(0.5, 0.95);
+
+    // Set depth lower than trees so they appear behind
+    building.setDepth(calculateDepth(s, t, this.isoConfig.scale) + 50);
+
+    this.buildingLayer.add(building);
+    this.buildingSprites.push(building);
   }
 
   private renderGrid(): void {
